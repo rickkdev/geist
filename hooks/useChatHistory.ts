@@ -51,11 +51,38 @@ export const useChatHistory = () => {
     await saveChatMessages(initialMessages);
   };
 
+  const logChatHistoryForLLM = () => {
+    console.log('=== Chat History for LLM ===');
+    
+    const formattedHistory = messages.map(msg => ({
+      role: msg.role,
+      content: msg.text,
+      timestamp: new Date(msg.timestamp).toISOString()
+    }));
+    
+    console.log('Formatted as array:', JSON.stringify(formattedHistory, null, 2));
+    
+    console.log('\nFormatted as conversation:');
+    messages.forEach((msg, index) => {
+      console.log(`[${index + 1}] ${msg.role.toUpperCase()}: ${msg.text}`);
+    });
+    
+    console.log('\nAs OpenAI-style messages:');
+    const openAIFormat = messages.map(msg => ({
+      role: msg.role,
+      content: msg.text
+    }));
+    console.log(JSON.stringify(openAIFormat, null, 2));
+    
+    console.log('=== End Chat History ===');
+  };
+
   return {
     messages,
     isLoading,
     addMessage,
     addMessages,
     clearHistory,
+    logChatHistoryForLLM,
   };
 };

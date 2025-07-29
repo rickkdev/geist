@@ -1,6 +1,10 @@
 # LLM Client App — Privacy-First Build Plan
 # Stack: React Native + Expo + NativeWind + Local Auth + Local LLM (post-eject)
 
+## Description
+
+This app is a ChatGPT alternative that uses LLMs that are running directly on the phone with no data stored on a server as backup or API called for any AI interaction.
+
 ## Phase 1: UI & Mocked LLM
 
 - [ X ] Set up new Expo project:
@@ -19,21 +23,21 @@
 
 ## Phase 2: Local Auth (if needed)
 
-- [ ] (No PIN required for now; see optional section below)
+- [  ] (No PIN required for now; see optional section below)
 
 ## Phase 3: Persistent Local Chat Memory
 
-- [ ] Install AsyncStorage:
+- [ X ] Install AsyncStorage:
   - `npm install @react-native-async-storage/async-storage`
 
-- [ ] Implement chat persistence:
+- [ X ] Implement chat persistence:
   - Store chat messages under unique thread key
   - Load on app start
 
-- [ ] Add message timestamp and role
+- [ X ] Add message timestamp and role
 - [ ] Optional: implement SQLite memory later
 
-- [ ] Create a hook: `useChatHistory(threadId)`
+- [ X ] Create a hook: `useChatHistory(threadId)`
 
 ## Phase 4: Eject + Native LLM Runtime
 

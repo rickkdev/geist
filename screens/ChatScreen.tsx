@@ -8,7 +8,7 @@ import { useChatHistory } from '../hooks/useChatHistory';
 import { Message } from '../lib/chatStorage';
 
 const ChatScreen: React.FC = () => {
-  const { messages, isLoading, addMessage } = useChatHistory();
+  const { messages, isLoading, addMessage, logChatHistoryForLLM } = useChatHistory();
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
 
@@ -33,6 +33,9 @@ const ChatScreen: React.FC = () => {
     };
     await addMessage(assistantMessage);
     setIsTyping(false);
+    
+    // Log the entire chat history after each message exchange
+    logChatHistoryForLLM();
   };
 
   return (
