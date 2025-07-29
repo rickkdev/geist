@@ -4,24 +4,14 @@ import ChatList from '../components/ChatList';
 import InputBar from '../components/InputBar';
 import TypingIndicator from '../components/TypingIndicator';
 import { sendMessageToLLM } from '../lib/llmClient';
-
-export interface Message {
-  id: string;
-  text: string;
-  role: 'user' | 'assistant';
-  timestamp: number;
-}
-
-const initialMessages: Message[] = [
-  { id: '1', text: 'Hello! How can I help you today?', role: 'assistant', timestamp: Date.now() },
-];
+import { useChatHistory } from '../hooks/useChatHistory';
+import { Message } from '../lib/chatStorage';
 
 const ChatScreen: React.FC = () => {
-  const [messages, setMessages] = useState<Message[]>(initialMessages);
+  const { messages, isLoading, addMessage } = useChatHistory();
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
 
-  // TODO: Add send message logic and typing simulation
   const handleSend = async () => {
     if (!input.trim()) return;
     const userMessage: Message = {
@@ -30,9 +20,10 @@ const ChatScreen: React.FC = () => {
       role: 'user',
       timestamp: Date.now(),
     };
-    setMessages((prev) => [...prev, userMessage]);
+    await addMessage(userMessage);
     setInput('');
     setIsTyping(true);
+    
     const replyText = await sendMessageToLLM(input);
     const assistantMessage: Message = {
       id: (Date.now() + 1).toString(),
@@ -40,7 +31,7 @@ const ChatScreen: React.FC = () => {
       role: 'assistant',
       timestamp: Date.now(),
     };
-    setMessages((prev) => [...prev, assistantMessage]);
+    await addMessage(assistantMessage);
     setIsTyping(false);
   };
 

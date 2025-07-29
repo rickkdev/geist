@@ -1,7 +1,7 @@
 import React from 'react';
-import { FlatList, View, StyleSheet } from 'react-native';
+import { FlatList } from 'react-native';
 import MessageBubble from './MessageBubble';
-import { Message } from '../screens/ChatScreen';
+import { Message } from '../lib/chatStorage';
 
 interface ChatListProps {
   messages: Message[];
@@ -13,17 +13,9 @@ const ChatList: React.FC<ChatListProps> = ({ messages }) => {
       data={messages}
       renderItem={({ item }) => <MessageBubble message={item} />}
       keyExtractor={(item) => item.id}
-      contentContainerStyle={styles.container}
+      contentContainerClassName="flex-grow justify-end p-3"
     />
   );
 };
-
-const styles = StyleSheet.create({
-  container: {
-    flexGrow: 1,
-    justifyContent: 'flex-end',
-    padding: 12,
-  },
-});
 
 export default ChatList;

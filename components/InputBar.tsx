@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, TextInput, TouchableOpacity, Text, StyleSheet } from 'react-native';
+import { View, TextInput, TouchableOpacity, Text } from 'react-native';
 
 interface InputBarProps {
   value: string;
@@ -9,53 +9,19 @@ interface InputBarProps {
 
 const InputBar: React.FC<InputBarProps> = ({ value, onChangeText, onSend }) => {
   return (
-    <View style={styles.container}>
+    <View className="flex-row items-end p-2 bg-gray-50">
       <TextInput
-        style={styles.input}
+        className="flex-1 min-h-[40px] max-h-[100px] rounded-2xl bg-white px-3 py-2 mr-2 border border-gray-200"
         value={value}
         onChangeText={onChangeText}
         placeholder="Type a message..."
         multiline
       />
-      <TouchableOpacity style={styles.button} onPress={onSend} disabled={!value.trim()}>
-        <Text style={styles.buttonText}>Send</Text>
+      <TouchableOpacity className="bg-blue-600 rounded-2xl px-4 py-2.5 justify-center items-center" onPress={onSend} disabled={!value.trim()}>
+        <Text className="text-white font-bold">Send</Text>
       </TouchableOpacity>
     </View>
   );
 };
-
-const styles = StyleSheet.create({
-  container: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    padding: 8,
-    backgroundColor: '#f9fafb',
-  },
-  input: {
-    flex: 1,
-    minHeight: 40,
-    maxHeight: 100,
-    borderRadius: 16,
-    backgroundColor: '#fff',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    marginRight: 8,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-  },
-  button: {
-    backgroundColor: '#2563eb',
-    borderRadius: 16,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
-    opacity: 1,
-  },
-  buttonText: {
-    color: '#fff',
-    fontWeight: 'bold',
-  },
-});
 
 export default InputBar;
