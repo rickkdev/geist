@@ -24,7 +24,6 @@ const ChatScreen: React.FC = () => {
       timestamp: Date.now(),
     };
     await addMessage(userMessage);
-    const userInput = input;
     setInput('');
     setIsTyping(true);
     setStreamingMessage('');
@@ -33,7 +32,10 @@ const ChatScreen: React.FC = () => {
       const assistantId = (Date.now() + 1).toString();
       let fullResponse = '';
       
-      const replyText = await ask(userInput, (token: string) => {
+      // Pass the entire conversation history including the new user message
+      const conversationHistory = [...messages, userMessage];
+      
+      const replyText = await ask(conversationHistory, (token: string) => {
         fullResponse += token;
         setStreamingMessage(fullResponse);
       });

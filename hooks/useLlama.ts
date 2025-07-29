@@ -1,14 +1,18 @@
 import { useState, useEffect, useCallback } from 'react';
 import { initializeLlama, generateResponse, releaseLlama, getLlamaContext } from '../lib/llama';
 import { downloadModel, getModelPath } from '../lib/modelDownloader';
+import { Message } from '../lib/chatStorage';
+import { formatPrompt, formatSinglePrompt } from '../lib/promptFormatter';
 
 export interface UseLlamaReturn {
   isReady: boolean;
   loading: boolean;
   error: string | null;
   downloadProgress: number;
-  ask: (prompt: string, onToken?: (token: string) => void) => Promise<string>;
+  ask: (messages: Message[], onToken?: (token: string) => void, oneShot?: boolean) => Promise<string>;
   reinitialize: () => Promise<void>;
+  debugMode: boolean;
+  setDebugMode: (enabled: boolean) => void;
 }
 
 export function useLlama(): UseLlamaReturn {
@@ -16,6 +20,7 @@ export function useLlama(): UseLlamaReturn {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [downloadProgress, setDownloadProgress] = useState(0);
+  const [debugMode, setDebugMode] = useState(false);
 
   const initialize = useCallback(async () => {
     try {
@@ -53,15 +58,25 @@ export function useLlama(): UseLlamaReturn {
   }, []);
 
   const ask = useCallback(async (
-    prompt: string, 
-    onToken?: (token: string) => void
+    messages: Message[], 
+    onToken?: (token: string) => void,
+    oneShot: boolean = false
   ): Promise<string> => {
     if (!isReady) {
       throw new Error('Llama is not ready. Please wait for initialization to complete.');
     }
 
     try {
-      const response = await generateResponse(prompt, onToken);
+      let formattedPrompt: string;
+      
+      if (oneShot && messages.length > 0) {
+        const lastMessage = messages[messages.length - 1];
+        formattedPrompt = formatSinglePrompt(lastMessage.text);
+      } else {
+        formattedPrompt = formatPrompt(messages);
+      }
+      
+      const response = await generateResponse(formattedPrompt, onToken);
       return response;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to generate response';
@@ -95,5 +110,7 @@ export function useLlama(): UseLlamaReturn {
     downloadProgress,
     ask,
     reinitialize,
+    debugMode,
+    setDebugMode,
   };
 }
