@@ -1,19 +1,22 @@
 import React, { useState } from 'react';
-import { SafeAreaView, View, StyleSheet } from 'react-native';
+import { SafeAreaView, View, Text } from 'react-native';
 import ChatList from '../components/ChatList';
 import InputBar from '../components/InputBar';
 import TypingIndicator from '../components/TypingIndicator';
-import { sendMessageToLLM } from '../lib/llmClient';
+import { useLlama } from '../hooks/useLlama';
 import { useChatHistory } from '../hooks/useChatHistory';
 import { Message } from '../lib/chatStorage';
 
 const ChatScreen: React.FC = () => {
   const { messages, isLoading, addMessage, logChatHistoryForLLM } = useChatHistory();
+  const { isReady, loading, error, downloadProgress, ask } = useLlama();
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [streamingMessage, setStreamingMessage] = useState('');
 
   const handleSend = async () => {
-    if (!input.trim()) return;
+    if (!input.trim() || !isReady) return;
+    
     const userMessage: Message = {
       id: Date.now().toString(),
       text: input,
@@ -21,37 +24,95 @@ const ChatScreen: React.FC = () => {
       timestamp: Date.now(),
     };
     await addMessage(userMessage);
+    const userInput = input;
     setInput('');
     setIsTyping(true);
+    setStreamingMessage('');
     
-    const replyText = await sendMessageToLLM(input);
-    const assistantMessage: Message = {
-      id: (Date.now() + 1).toString(),
-      text: replyText,
-      role: 'assistant',
-      timestamp: Date.now(),
-    };
-    await addMessage(assistantMessage);
-    setIsTyping(false);
-    
-    // Log the entire chat history after each message exchange
-    logChatHistoryForLLM();
+    try {
+      const assistantId = (Date.now() + 1).toString();
+      let fullResponse = '';
+      
+      const replyText = await ask(userInput, (token: string) => {
+        fullResponse += token;
+        setStreamingMessage(fullResponse);
+      });
+      
+      const assistantMessage: Message = {
+        id: assistantId,
+        text: replyText || fullResponse,
+        role: 'assistant',
+        timestamp: Date.now(),
+      };
+      await addMessage(assistantMessage);
+      setStreamingMessage('');
+      
+      // Log the entire chat history after each message exchange
+      logChatHistoryForLLM();
+    } catch (err) {
+      console.error('Failed to get LLM response:', err);
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        text: 'Sorry, I encountered an error processing your message.',
+        role: 'assistant',
+        timestamp: Date.now(),
+      };
+      await addMessage(errorMessage);
+    } finally {
+      setIsTyping(false);
+    }
   };
 
+  if (loading) {
+    return (
+      <SafeAreaView className="flex-1 bg-white">
+        <View className="flex-1 justify-center items-center p-5">
+          <Text className="text-base text-gray-600 text-center">
+            {downloadProgress > 0 && downloadProgress < 100 
+              ? `Downloading model... ${Math.round(downloadProgress)}%`
+              : 'Initializing AI model...'}
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (error) {
+    return (
+      <SafeAreaView className="flex-1 bg-white">
+        <View className="flex-1 justify-center items-center p-5">
+          <Text className="text-base text-red-500 text-center mb-2">Error: {error}</Text>
+          <Text className="text-sm text-gray-600 text-center">Please check your model setup</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // Combine regular messages with streaming message for display
+  const displayMessages = [...messages];
+  if (streamingMessage) {
+    displayMessages.push({
+      id: 'streaming',
+      text: streamingMessage,
+      role: 'assistant',
+      timestamp: Date.now(),
+    });
+  }
+
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.chatList}>
-        <ChatList messages={messages} />
-        {isTyping && <TypingIndicator />}
+    <SafeAreaView className="flex-1 bg-white">
+      <View className="flex-1 pb-2">
+        <ChatList messages={displayMessages} />
+        {isTyping && !streamingMessage && <TypingIndicator />}
       </View>
-      <InputBar value={input} onChangeText={setInput} onSend={handleSend} />
+      <InputBar 
+        value={input} 
+        onChangeText={setInput} 
+        onSend={handleSend}
+        disabled={!isReady || isTyping}
+      />
     </SafeAreaView>
   );
 };
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
-  chatList: { flex: 1, paddingBottom: 8 },
-});
 
 export default ChatScreen;

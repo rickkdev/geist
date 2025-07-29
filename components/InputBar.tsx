@@ -5,9 +5,12 @@ interface InputBarProps {
   value: string;
   onChangeText: (text: string) => void;
   onSend: () => void;
+  disabled?: boolean;
 }
 
-const InputBar: React.FC<InputBarProps> = ({ value, onChangeText, onSend }) => {
+const InputBar: React.FC<InputBarProps> = ({ value, onChangeText, onSend, disabled = false }) => {
+  const isDisabled = disabled || !value.trim();
+  
   return (
     <View className="flex-row items-end p-2 bg-gray-50">
       <TextInput
@@ -16,8 +19,13 @@ const InputBar: React.FC<InputBarProps> = ({ value, onChangeText, onSend }) => {
         onChangeText={onChangeText}
         placeholder="Type a message..."
         multiline
+        editable={!disabled}
       />
-      <TouchableOpacity className="bg-blue-600 rounded-2xl px-4 py-2.5 justify-center items-center" onPress={onSend} disabled={!value.trim()}>
+      <TouchableOpacity 
+        className={`rounded-2xl px-4 py-2.5 justify-center items-center ${isDisabled ? 'bg-gray-400' : 'bg-blue-600'}`} 
+        onPress={onSend} 
+        disabled={isDisabled}
+      >
         <Text className="text-white font-bold">Send</Text>
       </TouchableOpacity>
     </View>
