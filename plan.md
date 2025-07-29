@@ -1,9 +1,11 @@
-# ✅ LLM Client App — Privacy-First Build Plan  
+# ✅ LLM Client App — Privacy-First Build Plan
+
 **Stack:** React Native + Expo + NativeWind + Local Auth + Local LLM (post-eject)
 
 ---
 
-## 🧠 Description  
+## 🧠 Description
+
 This app is a ChatGPT alternative that uses LLMs that are running directly on the phone with no data stored on a server as backup or API called for any AI interaction.
 
 ---
@@ -56,6 +58,7 @@ This app is a ChatGPT alternative that uses LLMs that are running directly on th
 - [x] Set up native build environment:
   - Xcode + Android Studio
   - Ensure app builds and runs post-eject
+  - You still need to host metro server `npx react-native start`
 
 ---
 
@@ -107,7 +110,7 @@ This app is a ChatGPT alternative that uses LLMs that are running directly on th
   - Created `/models` folder and placed model file
   - **To start local server:** `cd models && npx http-server . -p 3000 --cors`
   - Model available at: `http://127.0.0.1:3000/DeepSeek-R1-Distill-Qwen-7B-IQ2_M.gguf`
-- [x] Copy to device file system (not bundle) - logic implemented  
+- [x] Copy to device file system (not bundle) - logic implemented
 - [x] Auto-download on first use with progress indicator - logic implemented
 
 ---
@@ -138,3 +141,159 @@ This app is a ChatGPT alternative that uses LLMs that are running directly on th
   - Implement authentication context/provider
   - Auto-lock app (background/inactivity)
   - Optional: PIN reset flow (after reinstall)
+
+---
+
+## ✅ Phase 6: Prompt Quality + Inference Stability
+
+### 🧠 Goal
+
+Ensure clean, stateless prompts with proper formatting and accurate, deterministic model outputs.
+
+---
+
+### 🔧 Fixes & Improvements
+
+- [ ] **Prompt Formatter**
+  - Create `lib/promptFormatter.ts`
+  - Format prompts using **ChatML-style syntax**:
+    ```ts
+    export const formatPrompt = (messages) =>
+      messages
+        .map(({ role, content }) => {
+          const r = role === 'system' ? 'system' : role === 'user' ? 'user' : 'assistant';
+          return `<|im_start|>${r}\n${content}<|im_end|>`;
+        })
+        .join('\n') + `\n<|im_start|>assistant\n`;
+    ```
+
+- [ ] **Hard Reset Model Context Before Each Prompt**
+  - Ensure `.reset()` or re-init is called in `useLlama.ask()` before new inference
+  - Optional: implement sliding context window logic in `useChatHistory`
+
+- [ ] **Log Full Prompt Sent to Model**
+  - Add debug logging in `llama.ts`:
+    ```ts
+    console.log('🧠 Prompt:\n', fullPrompt);
+    ```
+
+- [ ] **Token Limit + Timeout**
+  - Add `maxTokens` or `maxLength` guard
+  - Optional: cancel generation after N seconds of streaming
+
+- [ ] **One-Turn Mode for Debugging**
+  - Add `oneShot: true` mode to `ask()` hook that disables context history
+  - Useful for testing hallucination-prone prompts
+
+- [ ] **Improve "Unknown Question" Handling**
+  - Add logic to detect off-topic or excessively long responses
+  - Use a fallback like: `"I'm not sure how to answer that."`
+
+---
+
+### 🧪 Debugging Tools (Optional)
+
+- [ ] Add a debug screen:
+  - Show formatted prompt preview
+  - Show raw output token stream
+  - Toggle `verboseLogs`, `oneShot`, `maxTokens` settings
+
+  ## ✅ Phase 7: Multi-Model Support + Syntax-Aware Formatting
+
+### 🧠 Goal
+
+Support switching between local models with different chat formats and context behavior.
+
+---
+
+### 🔧 Multi-Model Prompt Formatting
+
+- [ ] **Create prompt formatting layer**
+  - Add `lib/promptFormatter.ts` with a single entry:
+    ```ts
+    export function formatPrompt(messages, modelId) {
+      const formatter = modelFormatters[modelId] || modelFormatters.default;
+      return formatter(messages);
+    }
+    ```
+
+- [ ] **Create a model formatter registry**
+  - Add `lib/modelFormatters.ts`:
+
+    ```ts
+    export const modelFormatters = {
+      'deepseek-qwen-7b': (messages) => {
+        return (
+          messages
+            .map(({ role, content }) => `<|im_start|>${role}\n${content}<|im_end|>`)
+            .join('\n') + `\n<|im_start|>assistant\n`
+        );
+      },
+
+      'llama2-7b': (messages) => {
+        return (
+          messages
+            .map(({ role, content }) =>
+              role === 'user' ? `User: ${content}` : `Assistant: ${content}`
+            )
+            .join('\n') + `\nAssistant:`
+        );
+      },
+
+      'mistral-7b': (messages) => {
+        const last = messages[messages.length - 1];
+        return `### Instruction:\n${last.content}\n\n### Response:\n`;
+      },
+
+      default: (messages) => {
+        return (
+          messages.map(({ role, content }) => `${role}: ${content}`).join('\n') + `\nassistant:`
+        );
+      },
+    };
+    ```
+
+- [ ] **Pass `currentModelId` to `formatPrompt()` in `useLlama.ask()`**
+
+- [ ] **Define per-model metadata config**
+  - Create `modelRegistry.ts`:
+    ```ts
+    export const modelRegistry = {
+      'deepseek-qwen-7b': {
+        format: 'chatml',
+        contextWindow: 4096,
+        stopSequences: ['<|im_end|>'],
+      },
+      'llama2-7b': {
+        format: 'raw',
+        contextWindow: 4096,
+        stopSequences: ['</s>'],
+      },
+      // ...
+    };
+    ```
+
+---
+
+### 🧪 Testing Utilities
+
+- [ ] Add internal dev screen to test:
+  - Prompt preview (pre-formatted)
+  - Streaming token debug log
+  - Active model selector
+  - System prompt injection
+
+---
+
+### 🧠 Future-Proofing
+
+- [ ] Add support for:
+  - Per-model `systemPrompt` logic
+  - Model-specific tokenizer/token count estimation (optional)
+  - Model capability flags (`supportsStreaming`, `supportsSystemPrompt`, etc.)
+
+---
+
+### Outcome
+
+You’ll be able to switch between LLaMA, DeepSeek, Mistral, and other local models with zero hallucination risk and proper formatting — with extensibility built in.
