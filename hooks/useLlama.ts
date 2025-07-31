@@ -2,14 +2,18 @@ import { useState, useEffect, useCallback } from 'react';
 import { initializeLlama, generateResponse, releaseLlama, getLlamaContext } from '../lib/llama';
 import { downloadModel, getModelPath } from '../lib/modelDownloader';
 import { Message } from '../lib/chatStorage';
-import { formatPrompt, formatSinglePrompt } from '../lib/promptFormatter';
+import { formatPrompt, formatSinglePrompt, formatPromptSimple } from '../lib/promptFormatter';
 
 export interface UseLlamaReturn {
   isReady: boolean;
   loading: boolean;
   error: string | null;
   downloadProgress: number;
-  ask: (messages: Message[], onToken?: (token: string) => void, oneShot?: boolean, enableHardReset?: boolean) => Promise<string>;
+  ask: (
+    messages: Message[],
+    onToken?: (token: string) => void,
+    oneShot?: boolean
+  ) => Promise<string>;
   reinitialize: () => Promise<void>;
   debugMode: boolean;
   setDebugMode: (enabled: boolean) => void;
@@ -26,10 +30,10 @@ export function useLlama(): UseLlamaReturn {
     try {
       setLoading(true);
       setError(null);
-      
+
       // Check if model exists, if not download it
       let modelPath = await getModelPath();
-      
+
       if (!modelPath) {
         console.log('Model not found, downloading...');
         modelPath = await downloadModel((progress) => {
@@ -38,11 +42,11 @@ export function useLlama(): UseLlamaReturn {
       }
 
       console.log('Initializing Llama with model at:', modelPath);
-      
+
       await initializeLlama({
         modelPath,
-        contextSize: 1024,
-        threads: 6,
+        contextSize: 512,
+        threads: 4,
         temperature: 0.6,
       });
 
@@ -57,34 +61,38 @@ export function useLlama(): UseLlamaReturn {
     }
   }, []);
 
-  const ask = useCallback(async (
-    messages: Message[], 
-    onToken?: (token: string) => void,
-    oneShot: boolean = false,
-    enableHardReset: boolean = false
-  ): Promise<string> => {
-    if (!isReady) {
-      throw new Error('Llama is not ready. Please wait for initialization to complete.');
-    }
-
-    try {
-      let formattedPrompt: string;
-      
-      if (oneShot && messages.length > 0) {
-        const lastMessage = messages[messages.length - 1];
-        formattedPrompt = formatSinglePrompt(lastMessage.text);
-      } else {
-        formattedPrompt = formatPrompt(messages);
+  const ask = useCallback(
+    async (
+      messages: Message[],
+      onToken?: (token: string) => void,
+      oneShot: boolean = false
+    ): Promise<string> => {
+      if (!isReady) {
+        throw new Error('Llama is not ready. Please wait for initialization to complete.');
       }
-      
-      const response = await generateResponse(formattedPrompt, onToken, 256, 45000, enableHardReset);
-      return response;
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to generate response';
-      setError(errorMessage);
-      throw err;
-    }
-  }, [isReady]);
+
+      try {
+        let formattedPrompt: string;
+
+        if (oneShot && messages.length > 0) {
+          const lastMessage = messages[messages.length - 1];
+          formattedPrompt = formatSinglePrompt(lastMessage.text);
+        } else {
+          // Try simple format first for better compatibility with DeepSeek
+          formattedPrompt = formatPromptSimple(messages);
+          console.log('Using simple prompt format for better model compatibility');
+        }
+
+        const response = await generateResponse(formattedPrompt, onToken, 256, 120000);
+        return response;
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : 'Failed to generate response';
+        setError(errorMessage);
+        throw err;
+      }
+    },
+    [isReady]
+  );
 
   const reinitialize = useCallback(async () => {
     if (isReady && getLlamaContext()) {
@@ -96,7 +104,7 @@ export function useLlama(): UseLlamaReturn {
 
   useEffect(() => {
     initialize();
-    
+
     return () => {
       if (getLlamaContext()) {
         releaseLlama().catch(console.error);

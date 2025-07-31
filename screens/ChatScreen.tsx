@@ -35,6 +35,9 @@ const ChatScreen: React.FC = () => {
       // Pass the entire conversation history including the new user message
       const conversationHistory = [...messages, userMessage];
       
+      console.log('🎯 CHAT HANDLER: Starting LLM request');
+      console.log('📊 Conversation length:', conversationHistory.length, 'messages');
+      
       const replyText = await ask(conversationHistory, (token: string) => {
         fullResponse += token;
         setStreamingMessage(fullResponse);
@@ -49,17 +52,62 @@ const ChatScreen: React.FC = () => {
       await addMessage(assistantMessage);
       setStreamingMessage('');
       
+      console.log('✅ CHAT HANDLER: Successfully added assistant message');
+      
       // Log the entire chat history after each message exchange
       logChatHistoryForLLM();
     } catch (err) {
-      console.error('Failed to get LLM response:', err);
+      console.error('💥 CHAT HANDLER: LLM request failed:', err);
+      
+      // Check if we have any partial response from global state
+      const partialResponse = (global as any).__LLAMA_LAST_PARTIAL_RESPONSE;
+      const lastError = (global as any).__LLAMA_LAST_ERROR;
+      
+      let errorText = 'Sorry, I encountered an error processing your message.';
+      
+      // If we have a partial response from timeout, use it
+      if (partialResponse && partialResponse.partialResponse && partialResponse.partialResponse.trim()) {
+        console.log('🔄 CHAT HANDLER: Found partial response from timeout, using it');
+        console.log('Partial response length:', partialResponse.partialResponse.length);
+        errorText = partialResponse.partialResponse.trim() + '\n\n[Response was cut short due to timeout]';
+        
+        // Store the partial response globally for developer inspection
+        (global as any).__CHAT_LAST_PARTIAL = {
+          userMessage: userMessage.text,
+          partialResponse: partialResponse.partialResponse,
+          timestamp: new Date().toISOString(),
+          reason: 'timeout'
+        };
+      } else if (lastError && lastError.partialResponse && lastError.partialResponse.trim()) {
+        console.log('🔄 CHAT HANDLER: Found partial response from error, using it');
+        errorText = lastError.partialResponse.trim() + '\n\n[Response was interrupted by an error]';
+        
+        // Store the partial response globally for developer inspection
+        (global as any).__CHAT_LAST_PARTIAL = {
+          userMessage: userMessage.text,
+          partialResponse: lastError.partialResponse,
+          error: lastError.error,
+          timestamp: new Date().toISOString(),
+          reason: 'error'
+        };
+      }
+      
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
-        text: 'Sorry, I encountered an error processing your message.',
+        text: errorText,
         role: 'assistant',
         timestamp: Date.now(),
       };
       await addMessage(errorMessage);
+      
+      // Log error details for debugging
+      console.error('🔍 CHAT HANDLER: Error details logged to global.__CHAT_LAST_ERROR');
+      (global as any).__CHAT_LAST_ERROR = {
+        userMessage: userMessage.text,
+        error: err,
+        timestamp: new Date().toISOString(),
+        conversationLength: [...messages, userMessage].length
+      };
     } finally {
       setIsTyping(false);
     }
