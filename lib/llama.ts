@@ -40,26 +40,26 @@ export function getLlamaContext(): LlamaContext | null {
 export async function generateResponse(
   prompt: string,
   onToken?: (token: string) => void,
-  maxTokens: number = 512,
-  timeoutMs: number = 30000
+  maxTokens: number = 256,
+  timeoutMs: number = 45000,
+  enableHardReset: boolean = false
 ): Promise<string> {
   if (!llamaContext) {
     throw new Error('Llama not initialized. Call initializeLlama first.');
   }
 
   try {
-    // Reset context to ensure clean state
-    if (llamaConfig) {
-      console.log('🔄 Resetting Llama context before generation...');
-      await llamaContext.release();
-      
-      // Re-initialize context (this clears previous conversation state)
-      const context = await initLlama({
-        model: llamaConfig.modelPath,
-        n_ctx: llamaConfig.contextSize || 2048,
-        n_threads: llamaConfig.threads || 4,
-      });
-      llamaContext = context;
+    // Soft reset (clear KV cache) instead of hard reset for better performance
+    if (enableHardReset) {
+      console.log('🔄 Performing soft context reset (clearing KV cache)...');
+      // Clear the context but don't reinitialize - much faster
+      try {
+        await llamaContext.completion({ prompt: '', n_predict: 0 });
+      } catch (e) {
+        console.warn('Soft reset failed, continuing with existing context');
+      }
+    } else {
+      console.log('🔄 Using existing context (preserving conversation)...');
     }
     
     // Log the full prompt being sent to the model for debugging
@@ -82,9 +82,9 @@ export async function generateResponse(
       llamaContext!.completion({
         prompt,
         n_predict: maxTokens,
-        temperature: 0.7,
-        top_p: 0.9,
-        top_k: 40,
+        temperature: 0.6,
+        top_p: 0.85,
+        top_k: 30,
         stop: ['<|im_end|>', '</s>', '\n\nUser:', '\n\nuser:', '\n\nUSER:'],
       }, (data) => {
         if (data.token) {

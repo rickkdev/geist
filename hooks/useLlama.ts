@@ -9,7 +9,7 @@ export interface UseLlamaReturn {
   loading: boolean;
   error: string | null;
   downloadProgress: number;
-  ask: (messages: Message[], onToken?: (token: string) => void, oneShot?: boolean) => Promise<string>;
+  ask: (messages: Message[], onToken?: (token: string) => void, oneShot?: boolean, enableHardReset?: boolean) => Promise<string>;
   reinitialize: () => Promise<void>;
   debugMode: boolean;
   setDebugMode: (enabled: boolean) => void;
@@ -41,9 +41,9 @@ export function useLlama(): UseLlamaReturn {
       
       await initializeLlama({
         modelPath,
-        contextSize: 2048,
-        threads: 4,
-        temperature: 0.7,
+        contextSize: 1024,
+        threads: 6,
+        temperature: 0.6,
       });
 
       setIsReady(true);
@@ -60,7 +60,8 @@ export function useLlama(): UseLlamaReturn {
   const ask = useCallback(async (
     messages: Message[], 
     onToken?: (token: string) => void,
-    oneShot: boolean = false
+    oneShot: boolean = false,
+    enableHardReset: boolean = false
   ): Promise<string> => {
     if (!isReady) {
       throw new Error('Llama is not ready. Please wait for initialization to complete.');
@@ -76,7 +77,7 @@ export function useLlama(): UseLlamaReturn {
         formattedPrompt = formatPrompt(messages);
       }
       
-      const response = await generateResponse(formattedPrompt, onToken);
+      const response = await generateResponse(formattedPrompt, onToken, 256, 45000, enableHardReset);
       return response;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to generate response';
