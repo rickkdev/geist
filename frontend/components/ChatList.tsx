@@ -1,7 +1,7 @@
 import React from 'react';
 import { FlatList } from 'react-native';
 import MessageBubble from './MessageBubble';
-import { Message } from '../lib/chatStorage';
+import { Message } from '../frontend/lib/chatStorage';
 
 interface ChatListProps {
   messages: Message[];
