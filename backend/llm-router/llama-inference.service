@@ -1,0 +1,29 @@
+[Unit]
+Description=Llama.cpp Inference Server
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=inference
+Group=inference
+ExecStart=/opt/llama.cpp/build/bin/llama-server -m /opt/llama.cpp/models/gpt-oss-20b-Q4_K_S.gguf -c 4096 -ngl 0 --port 8001 --host 127.0.0.1
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+# Security hardening
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=read-only
+ProtectSystem=strict
+ProtectKernelLogs=yes
+ProtectKernelModules=yes
+RestrictAddressFamilies=AF_INET AF_INET6
+SystemCallFilter=@system-service
+MemoryDenyWriteExecute=yes
+LimitCORE=0
+
+[Install]
+WantedBy=multi-user.target

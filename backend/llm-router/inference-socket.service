@@ -1,0 +1,32 @@
+[Unit]
+Description=Inference UNIX Socket Proxy
+After=llama-inference.service
+Requires=llama-inference.service
+
+[Service]
+Type=simple
+User=inference
+Group=inference
+ExecStart=/usr/bin/socat UNIX-LISTEN:/run/inference.sock,fork,mode=660,group=router TCP:127.0.0.1:8001
+ExecStartPre=/bin/rm -f /run/inference.sock
+ExecStopPost=/bin/rm -f /run/inference.sock
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+# Security hardening
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=read-only
+ProtectSystem=strict
+ProtectKernelLogs=yes
+ProtectKernelModules=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallFilter=@system-service
+MemoryDenyWriteExecute=yes
+ReadWritePaths=/run
+LimitCORE=0
+
+[Install]
+WantedBy=multi-user.target

@@ -7,9 +7,10 @@
 - [x] No server-side prompt storage or logging
 - [x] Trusted Execution Environment (TEE) ready (future)
 - [x] Strong process isolation
-- [x] Streaming optional, initial focus on full response
+- [x] Streaming support (SSE) with end-to-end encryption
 - [x] Integrate only with trusted mobile app (no API keys)
-- [x] **NEW: Flexible architecture supporting both development (single server) and production (distributed) deployments**
+- [x] Flexible architecture: single node (dev) → multi-node (prod)
+- [ ] Formal threat model (actors, goals, assumptions, out-of-scope)
 
 ---
 
@@ -17,325 +18,291 @@
 
 ### Development Architecture (Single Server)
 
-- **Server**: Hetzner AX41-NVMe instance
+- **Server**: Hetzner AX41-NVMe (CPU)
 - **Components**:
   - Router/API server (FastAPI)
-  - LLM inference server (native Python) - smaller model
-- **Communication**: Local HTTP calls between router and inference server
+  - LLM inference server: llama.cpp HTTP server (gguf)
+- **Communication**:
+  - Router ⇄ inference via UNIX domain socket (`/run/inference.sock`)
+  - Router ⇄ client via HTTPS (HTTP/2, optional HTTP/3) and SSE
 - **Use Case**: Development, testing, smaller workloads
 
 ### Production Architecture (Distributed)
 
-- **Router Server**: Hetzner AX41-NVMe instance
-  - **Purpose**: Request routing, SSL termination, client communication
-  - **Components**: FastAPI, HTTP client for inference calls
-- **Inference Server**: Hetzner CPX51/CPX61 instance (GPU-enabled)
-  - **Purpose**: LLM inference, model serving
-  - **Components**: Native Python application with larger model
-  - **Network**: Private network or VPN between router and inference server
+- **Router Server**: Hetzner AX41-NVMe
+  - Purpose: Request routing, E2EE, streaming, cert/key management, rate limiting
+- **Inference Server(s)**: Hetzner CPX/GPUs when available
+  - Purpose: LLM inference (llama.cpp initially; later vLLM/ExLlamaV2 if GPU)
+- **Network**:
+  - WireGuard private network between router and inference servers
+  - mTLS on app layer over WG
+  - Health checks, circuit breaker, simple round-robin
 
-### Communication Flow
+### Streaming
 
-**Development:**
-
-1. Client → Router (encrypted request)
-2. Router → Local Inference Server (encrypted payload via HTTP)
-3. Inference Server → Router (encrypted response)
-4. Router → Client (encrypted response)
-
-**Production:**
-
-1. Client → Router (encrypted request)
-2. Router → Remote Inference Server (encrypted payload via HTTP)
-3. Inference Server → Router (encrypted response)
-4. Router → Client (encrypted response)
+- End-to-end Server-Sent Events (SSE):
+  - Client ⇄ Router (SSE over HTTPS)
+  - Router ⇄ Inference (SSE over UNIX socket in dev; HTTPS+mTLS in prod)
+  - Router re-encrypts and re-frames tokens per chunk
 
 ### Configuration Management
 
-- Environment-based configuration to switch between dev/prod modes
-- SystemD services for process management
-- Shared codebase with deployment-specific configurations
+- Environment-based configuration (dev/prod)
+- Systemd services with hardening and dependency ordering
+- Shared codebase with deployment-specific configs
+- Key rotation and cert management
 
 ---
 
-## ⚙️ 2. Router Server Setup
+## 🛡️ 2. Threat Model
 
-- [x] Install latest stable Linux (Ubuntu 22.04 LTS recommended) on Hetzner AX41-NVMe
-- [x] Set up SSH with key-based authentication (disable password login)
-- [x] Create non-root service user (`router-user`)
-- [x] Update system: `sudo apt update && sudo apt upgrade`
-- [x] Install build tools: `build-essential`, `python3`, `python3-venv`, etc.
-- [x] Enable Hetzner firewall:
-  - [x] Allow only ports 22 (SSH) and 443 (HTTPS)
-  - [x] Block all other inbound ports
-- [x] Enable UFW or iptables on server
-- [ ] Optional: Enable GDPR DPA in Hetzner admin console
+- [ ] Document adversaries: network observers, rogue infra admins (limited), remote attackers
+- [ ] Goals: keep prompts/responses confidential; no at-rest data; minimal metadata
+- [ ] Assumptions: device integrity, app pinning, OS trust on server, no physical access
+- [ ] Out-of-scope: on-device malware, baseband attacks, coerced endpoints
+- [ ] Controls: HPKE E2EE, mTLS, WireGuard, systemd sandboxing, no logs, swap disabled
 
 ---
 
-## 🐍 3. Router Python Environment & Dependencies
+## ⚙️ 3. Router Python Environment & Dependencies
 
-- [x] Install uv (fast Python package manager):
+- [x] Install uv:
   ```bash
   curl -LsSf https://astral.sh/uv/install.sh | sh
-  source ~/.cargo/env  # or restart shell
+  source ~/.cargo/env
   ```
-- [x] Create new project with uv:
+- [x] Create project:
   ```bash
   uv init llm-router
   cd llm-router
   ```
-- [x] Add core dependencies to pyproject.toml:
+- [x] Add core dependencies:
   ```bash
-  uv add fastapi uvicorn[standard] cryptography pynacl
-  uv add httpx aiohttp  # for async HTTP calls to inference server
+  uv add fastapi uvicorn[standard] hpke sse-starlette httpx[http2] python-dotenv pydantic-settings
   ```
-- [x] Add dev tools:
+- [x] Dev tools:
   ```bash
-  uv add --dev psutil supervisor
+  uv add --dev ruff mypy pytest pytest-asyncio psutil
   ```
-- [x] Install all dependencies:
+- [x] Sync:
   ```bash
   uv sync
-  ```
-- [ ] **NEW: Add configuration management**
-  ```bash
-  uv add python-dotenv pydantic-settings
   ```
 
 ---
 
-## 🧠 4. LLM Inference Server Setup (Development & Production)
+## 🧠 4. Inference Server Setup (CPU-first with llama.cpp)
 
-### Native Python Setup
+### Foundation Setup
 
-- [x] Set up inference server dependencies:
+- [x] Download and compile llama.cpp from source:
   ```bash
-  uv add fastapi uvicorn[standard] cryptography pynacl
-  uv add torch transformers bitsandbytes accelerate deepspeed safetensors
+  git clone https://github.com/ggerganov/llama.cpp
+  cd llama.cpp
+  make
+  ```
+- [x] Download gguf model (start practical: `Llama-3.1-8B-Instruct` or `Qwen2.5-14B-Instruct`, `Q4_K_M`)
+- [x] Test basic llama.cpp server:
+  ```bash
+  ./build/bin/llama-server -m models/gpt-oss-20b-Q4_K_S.gguf -c 4096 -ngl 0 --port 8001 --host 127.0.0.1
+  ```
+- [x] Verify HTTP API works:
+  ```bash
+  curl -X POST http://localhost:8001/v1/chat/completions \
+    -H "Content-Type: application/json" \
+    -d '{"messages":[{"role":"user","content":"Hello"}],"stream":true}'
   ```
 
-- [ ] Create inference server application structure:
-  ```
-  inference-server/
-  ├── main.py
-  ├── config.py
-  ├── model_loader.py
-  └── requirements.txt
-  ```
+### UNIX Socket Security Layer
 
-- [ ] Implement inference server with native Python:
-  ```python
-  # main.py
-  from fastapi import FastAPI
-  import uvicorn
-  
-  app = FastAPI()
-  
-  @app.post("/inference")
-  async def process_inference(request):
-      # Process LLM inference
-      pass
-      
-  @app.get("/health")
-  async def health_check():
-      return {"status": "healthy"}
-  
-  if __name__ == "__main__":
-      uvicorn.run(app, host="0.0.0.0", port=8001)
+- [x] Understand UNIX socket benefits:
+  - File-based IPC (not network ports)
+  - No accidental external exposure
+  - Process-level access control
+  - Security isolation from network stack
+- [x] Choose UNIX socket approach: socat, nginx stream module, or custom Python adapter
+  <!-- COMPLETED: Selected socat for simplicity and reliability -->
+- [x] Create UNIX socket at `/run/inference.sock` with proper permissions (660)
+  <!-- COMPLETED: Created systemd services with proper permissions and user/group setup -->
+- [x] Set up proxy/adapter to forward HTTP requests from UNIX socket to localhost:8001
+  <!-- COMPLETED: socat proxy forwards all HTTP traffic bidirectionally -->
+- [x] Configure socket ownership for router service access
+  <!-- COMPLETED: Socket owned by inference:router group with 660 permissions -->
+- [x] Test UNIX socket connectivity:
+  ```bash
+  curl --unix-socket /run/inference.sock http://localhost/v1/chat/completions
+  # TESTED: Works for health, chat completions, and streaming
   ```
+- [x] Add systemd socket activation for automatic socket creation on boot
+  <!-- COMPLETED: Created llama-inference.service and inference-socket.service -->
+- [x] Implement graceful socket cleanup on service restart/stop
+  <!-- COMPLETED: ExecStartPre/ExecStopPost handle socket cleanup -->
+- [x] Health endpoint: `/health` (readiness: model loaded; liveness)
+  <!-- COMPLETED: Available at /health endpoint through UNIX socket -->
+
+Optional Python adapter (normalize SSE, map params) if needed for advanced routing.
 
 ---
 
 ## 🔐 5. Router FastAPI Server Setup
 
-- [ ] Create FastAPI app with flexible routing logic
-- [ ] Define `/api/chat` POST endpoint (main entry point)
-- [ ] Accept encrypted payload (encrypted prompt + encrypted symmetric key)
-- [ ] **NEW: Environment-based inference server configuration**
-  - Development: Forward to local inference server
-  - Production: Forward to remote inference server
-- [ ] Return encrypted response directly to client
-- [ ] Implement retry logic for inference server failures
-- [ ] Disable logging of request body, prompt, or response
-- [ ] **NEW: Add health check endpoint for inference server**
-- [ ] Test router with:
-  ```bash
-  uvicorn main:app --host 0.0.0.0 --port 443 --ssl-keyfile=... --ssl-certfile=...
-  ```
+- [ ] Create FastAPI app with:
+  - [ ] `/api/chat` POST (SSE response): accepts HPKE-encrypted request; streams HPKE-encrypted chunks back
+  - [ ] `/api/pubkey` GET: returns current and next router HPKE public keys (for rotation)
+  - [ ] `/health` GET: liveness/readiness (no sensitive info)
+  - [ ] `/metrics` GET: Prometheus metrics (no payloads)
+- [ ] Disable logging of body/headers; scrub traces
+- [ ] Retries with capped exponential backoff; circuit breaker on inference failures
+- [ ] Rate limiting per device pubkey and per-IP; optional PoW under stress
+
+Example local run:
+
+```bash
+uvicorn main:app --host 0.0.0.0 --port 443 --ssl-keyfile=... --ssl-certfile=...
+```
 
 ---
 
-## 🔑 6. End-to-End Encryption (E2EE) - Router Level
+## 🔑 6. End-to-End Encryption (E2EE) - HPKE
 
-- [ ] Generate router-side asymmetric key pair (e.g. NaCl / Curve25519)
-- [ ] Distribute router public key to client (hard-coded or `/api/pubkey`)
-- [ ] On client:
-  - [ ] Generate symmetric key
-  - [ ] Encrypt prompt with symmetric key
-  - [ ] Encrypt symmetric key with router public key
-  - [ ] Send both to `/api/chat`
-- [ ] On router:
-  - [ ] Decrypt symmetric key using private key
-  - [ ] Re-encrypt payload for inference server (different key)
-  - [ ] Forward to inference server (local or remote)
-- [ ] Document encryption scheme in README for auditability
+- [ ] HPKE: X25519-HKDF-SHA256 + ChaCha20-Poly1305 (RFC 9180)
+- [ ] Client request includes: encapsulated key, ciphertext, aad, timestamp (ts), request-id (rid)
+- [ ] Router: derive AEAD context, decrypt; zeroize secrets; mlock; no swap; per-request re-encrypt stream chunks
+- [ ] Replay protection: TTL (e.g., 60s), strict clock skew window
+- [ ] Key rotation: serve current + next public keys at `/api/pubkey`; app pins and supports overlap
+- [ ] Mobile app: pin router HPKE pubkey and TLS cert
 
 ---
 
 ## 🌐 7. Network Configuration
 
-### Development Network
+### Development
 
-- [ ] Set up localhost communication between router and inference server
-- [ ] Configure firewall to allow local inference server communication
+- [ ] Router ⇄ inference via UNIX domain socket: `/run/inference.sock`
+- [ ] Firewall: allow only 22/443; block local TCP binding for inference
 
-### Production Network
+### Production
 
-- [ ] Set up private network between router and inference server:
-  - [ ] Configure Hetzner Private Network or VPN
-  - [ ] Assign static IPs to both instances
-  - [ ] Configure firewall rules for inter-server communication
-  - [ ] Set up DNS resolution for internal hostnames
-- [ ] Set up secure communication channels:
-  - [ ] Use mTLS for router-inference server communication
-  - [ ] Implement certificate-based authentication
-  - [ ] Configure connection pooling and keep-alive
+- [ ] WireGuard between router and inference servers (private subnet only)
+- [ ] Inference binds only to WG interface
+- [ ] App-layer mTLS (short-lived certs via Smallstep/step-ca); cert pinning on router
+- [ ] Connection pooling, keep-alive, backoff/jitter
 
-## 🔄 8. Direct HTTP Communication
+---
 
-- [ ] Set up HTTP client on router for inference server calls
-- [ ] **NEW: Environment-based endpoint configuration**
-  - Development: `http://localhost:8001`
-  - Production: `http://inference-server-ip:8001`
-- [ ] Configure connection pooling and timeouts
-- [ ] Implement health check endpoint on inference server
-- [ ] Set up retry logic for failed HTTP calls
-- [ ] Add request timeout handling
-- [ ] Create monitoring for HTTP response times
+## 🔄 8. Transport Configuration
+
+- [ ] Dev: `unix:///run/inference.sock` (preferred)
+- [ ] Prod: `https://10.0.0.x:8001` over WireGuard + mTLS
+- [ ] Timeouts: connect/read; budget per request; cancel on client disconnect
+- [ ] Health checks: periodic; remove unhealthy nodes from rotation
 
 ---
 
 ## 🧠 9. Inference Server Implementation
 
-- [ ] Create FastAPI server for inference:
-  - [ ] Define `/inference` POST endpoint
-  - [ ] Load model on startup
-  - [ ] Process inference requests
-  - [ ] Return encrypted responses
-  - [ ] Health check endpoint at `/health`
-- [ ] **NEW: Environment-based model selection**
-  - Development: Smaller model (e.g., `microsoft/DialoGPT-medium`)
-  - Production: Full model (e.g., `openai/gpt-oss-120b`)
-- [ ] Download model weights to server (local directory)
-- [ ] Load model using Hugging Face Transformers:
-  ```python
-  model = AutoModelForCausalLM.from_pretrained(..., torch_dtype="auto", device_map="auto")
-  ```
-- [ ] Test with quantized versions if needed (4-bit, 8-bit)
-- [ ] Implement model caching and memory management
-- [ ] Run inference server natively:
-  ```bash
-  # Development
-  cd inference-server && python main.py
-
-  # Production (with systemd service)
-  sudo systemctl start inference-server
-  ```
-- [ ] For GPU support, ensure NVIDIA drivers are installed:
-  ```bash
-  # Check GPU availability
-  nvidia-smi
-  # Install PyTorch with CUDA support
-  uv add torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
-  ```
+- [ ] Use llama.cpp HTTP SSE endpoint:
+  - [ ] POST `/inference` (SSE stream of tokens)
+  - [ ] GET `/health`
+- [ ] Router parses llama.cpp SSE and re-frames to client SSE with HPKE per-chunk
+- [ ] Parameters: temperature, top_p, max_tokens; guardrails for limits
+- [ ] Future (GPU): migrate to vLLM/ExLlamaV2; keep router protocol stable
 
 ---
 
 ## ⚙️ 10. Configuration Management
 
-- [ ] Create environment configuration system:
+- [ ] Settings:
 
   ```python
-  # config.py
   from pydantic_settings import BaseSettings
 
   class Settings(BaseSettings):
-      ENVIRONMENT: str = "development"  # "development" or "production"
-      INFERENCE_SERVER_URL: str = "http://localhost:8001"
-      MODEL_NAME: str = "microsoft/DialoGPT-medium"
-      MAX_MEMORY: float = 0.8
+      ENVIRONMENT: str = "development"  # "development" | "production"
+      STREAMING_ENABLED: bool = True
+      REQUEST_TTL_SECONDS: int = 60
+
+      INFERENCE_TRANSPORT: str = "unix"  # "unix" | "https"
+      INFERENCE_ENDPOINTS: list[str] = ["unix:///run/inference.sock"]  # or ["https://10.0.0.2:8001"]
+
+      CIRCUIT_BREAKER_THRESHOLD: int = 5
+      CIRCUIT_RESET_SECONDS: int = 30
+
+      RATE_LIMIT_PER_MINUTE: int = 60
+      RATE_LIMIT_BURST: int = 30
+
+      ROUTER_HPKE_JWKS_PATH: str = ".well-known/jwks.json"
 
       class Config:
           env_file = ".env"
   ```
 
-- [ ] Create `.env.development` and `.env.production` files
-- [ ] Add deployment scripts for easy environment switching
-- [ ] Document configuration options and deployment procedures
+- [ ] `.env.development` and `.env.production`
+- [ ] Deployment scripts for env switching
+- [ ] Document config options and procedures
 
 ---
 
 ## 🔒 11. Isolation & No Data Persistence
 
-- [ ] Run router as non-root user
-- [ ] Run inference server with proper isolation:
-  - [ ] Run as non-root user via systemd service
-  - [ ] Limited file system access
-  - [ ] No persistent storage for sensitive data
-- [ ] Avoid logging prompt or response anywhere
-- [ ] Ensure no temp files, logging libraries, etc. store data
-- [ ] Disable or encrypt swap on all nodes
-- [ ] Implement secure inter-node communication
+- [ ] Run as non-root users; dedicated users per service
+- [ ] Systemd sandboxing (router + inference):
+  ```ini
+  NoNewPrivileges=yes
+  PrivateTmp=yes
+  ProtectHome=read-only
+  ProtectSystem=strict
+  ProtectKernelLogs=yes
+  ProtectKernelModules=yes
+  RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+  SystemCallFilter=@system-service
+  MemoryDenyWriteExecute=yes
+  ReadWritePaths=/run
+  LimitCORE=0
+  ```
+- [ ] Disable swap; `vm.swappiness=1`; `fs.suid_dumpable=0`
+- [ ] `mlock` sensitive key material; avoid temp files
+- [ ] No prompt/response logging; redact errors
 
 ---
 
 ## 🧪 12. Testing Pipeline
 
-- [ ] Write local test script:
-  - [ ] Encrypt prompt
-  - [ ] Call router API
-  - [ ] Poll for status
-  - [ ] Retrieve and decrypt response
-- [ ] Test various prompt lengths
-- [ ] Benchmark inference server performance
-- [ ] Test router-inference server communication
-- [ ] Verify memory and CPU usage under load
-- [ ] Test server failure scenarios
-- [ ] **NEW: Test both development and production configurations**
+- [ ] Unit tests:
+  - [ ] HPKE round-trip, replay rejection, key rotation handling
+  - [ ] Prompt formatting
+- [ ] Integration tests:
+  - [ ] Mobile-side HPKE → router → llama.cpp (SSE) → router → client decrypt
+  - [ ] Circuit breaker and retry behavior
+- [ ] Load tests (k6/Locust): p50/p95 latency, tokens/sec, concurrency
+- [ ] CI (GitHub Actions): lint (ruff), type-check (mypy), tests (pytest); ephemeral llama.cpp in CI if feasible
 
 ---
 
 ## 🚀 13. Production Deployment
 
-- [ ] Register domain and point to router server IP
-- [ ] Install SSL cert via Let's Encrypt (Certbot) on router
-- [ ] Set up HTTPS (via Uvicorn or Nginx reverse proxy)
-- [ ] Auto-renew certs via cron or systemd
-- [ ] Harden firewall (block all ports except 443 on router)
-- [ ] Run router via systemd with restart policies
-- [ ] Set up monitoring and alerting (no sensitive logging)
-- [ ] Backup router configuration and source code
-- [ ] **NEW: Create production inference server deployment**
-  - [ ] Set up separate Hetzner instance for inference
-  - [ ] Deploy native Python application with production configuration
-  - [ ] Configure private network between servers
-  - [ ] Set up systemd service for inference server
-- [ ] Set up logging aggregation (excluding sensitive data)
-- [ ] Implement rate limiting and DDoS protection
-- [ ] Plan for multi-region deployment if needed
+- [ ] Domain → router IP
+- [ ] TLS on router (Caddy recommended for auto HTTPS with HTTP/2/3)
+- [ ] Auto-renew certs
+- [ ] Firewall hardening (only 443 on router exposed)
+- [ ] Systemd units with restart policies; `After=wireguard-wg0.service` for inference servers
+- [ ] WireGuard setup and mTLS cert issuance (step-ca)
+- [ ] Monitoring/alerting (no sensitive logs)
+- [ ] Backup router configs and code
+- [ ] Separate inference server(s); private-only; health probes
+- [ ] Rate limiting and basic DDoS protection; optional PoW challenge
 
 ---
 
 ## 📊 14. Monitoring & Observability
 
-- [ ] Set up Prometheus/Grafana for metrics
-- [ ] Monitor response times, error rates
-- [ ] Track inference server health and performance
-- [ ] Implement distributed tracing (without sensitive data)
-- [ ] Set up alerting for server failures
-- [ ] Create dashboard for system overview
-- [ ] **NEW: Monitor both development and production environments**
+- [ ] `/metrics` (Prometheus):
+  - Latency: router→inference, end-to-end
+  - Active streams, tokens/sec
+  - HTTP status counts (4xx/5xx), circuit breaker open/close
+- [ ] Grafana dashboards
+- [ ] Alerts on error rate, tail latency, unhealthy backends
+- [ ] No payloads, no headers; hash-only request-id for correlation
 
 ---
 
@@ -344,20 +311,29 @@
 ### Development Workflow
 
 1. Code changes on router server
-2. Test with local native inference server
+2. Test with local llama.cpp via UNIX socket
 3. Iterate and refine
 
 ### Production Deployment
 
-1. Deploy router changes to production router server
-2. Deploy inference server to production inference server
+1. Deploy router to prod router server
+2. Deploy inference server(s); join WireGuard; issue mTLS certs
 3. Update environment configuration
 4. Restart systemd services
 5. Run health checks and monitoring
 
 ### Easy Migration Path
 
-- [ ] Create deployment scripts for easy environment switching
-- [ ] Document the process of moving from development to production
-- [ ] Set up automated testing for both configurations
-- [ ] Create backup and rollback procedures
+- [ ] Scripts for environment switching
+- [ ] Document dev → prod migration
+- [ ] Automated tests for both configurations
+- [ ] Backup and rollback procedures
+
+---
+
+## 🧯 16. Abuse Prevention & Safety
+
+- [ ] Per-device and per-IP rate limits (sliding window + burst)
+- [ ] Optional PoW (Hashcash-like) under attack
+- [ ] Max token and concurrency guards
+- [ ] Basic input/output token accounting (no content logging)
