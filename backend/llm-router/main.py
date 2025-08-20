@@ -11,8 +11,9 @@ from sse_starlette.sse import EventSourceResponse
 import uvicorn
 
 from config import get_settings
-from models import ChatRequest, HealthResponse, PubkeyResponse, MetricsResponse
+from models import ChatRequest, HealthResponse, PubkeyResponse, MetricsResponse, InferenceRequest
 from services.inference_client import InferenceClient
+from services.inference_service import InferenceService
 from services.hpke_service import HPKEService
 from services.rate_limiter import RateLimiter
 from services.circuit_breaker import CircuitBreaker
@@ -24,6 +25,7 @@ settings = get_settings()
 
 # Initialize services
 inference_client = InferenceClient(settings)
+inference_service = InferenceService(settings)
 hpke_service = HPKEService(settings)
 rate_limiter = RateLimiter(settings)
 circuit_breaker = CircuitBreaker(settings)
@@ -46,6 +48,7 @@ async def lifespan(app: FastAPI):
     # Startup
     setup_secure_logging()
     await inference_client.startup()
+    await inference_service.startup()
     
     # Start key rotation background task
     key_rotation_task_handle = asyncio.create_task(key_rotation_task())
@@ -59,6 +62,7 @@ async def lifespan(app: FastAPI):
     except asyncio.CancelledError:
         pass
     await inference_client.shutdown()
+    await inference_service.shutdown()
 
 
 # Initialize FastAPI app
@@ -109,31 +113,41 @@ async def chat_endpoint(request: Request, chat_request: ChatRequest):
         decrypted_payload = hpke_service.decrypt_request(chat_request)
         logging.info(f"Decrypted payload: {decrypted_payload.messages[0]['content'][:50]}...")
         
-        # Create streaming generator with client disconnect detection
+        # Convert decrypted payload to inference request with parameter guardrails
+        inference_request = InferenceRequest(
+            messages=decrypted_payload.messages,
+            temperature=decrypted_payload.temperature,
+            top_p=decrypted_payload.top_p,
+            max_tokens=decrypted_payload.max_tokens,
+            request_id=chat_request.request_id
+        )
+        
+        # Create streaming generator with client disconnect detection and per-chunk HPKE encryption
         async def event_stream():
             chunk_sequence = 0
             try:
-                logging.info(f"Starting streaming for request {chat_request.request_id}")
+                logging.info(f"Starting encrypted streaming for request {chat_request.request_id}")
                 
-                # Stream with request ID for budget tracking
-                async for chunk in inference_client.stream_chat(decrypted_payload, chat_request.request_id):
+                # Stream tokens from new inference service with SSE parsing
+                async for token in inference_service.stream_inference(inference_request):
                     # Check if client is still connected (if cancellation is enabled)
                     if settings.ENABLE_CLIENT_DISCONNECT_CANCELLATION:
                         if await request.is_disconnected():
                             logging.info(f"Client disconnected for request {chat_request.request_id}, cancelling stream")
                             break
                     
-                    # Re-encrypt each chunk with HPKE
-                    # Note: In production, you'd use the client's public key from request
-                    # For now, we'll use the device pubkey from the request
+                    # Per-chunk HPKE encryption - encrypt each token individually
                     client_pubkey = base64.b64decode(chat_request.device_pubkey)
-                    encrypted_chunk = hpke_service.encrypt_chunk(chunk, client_pubkey, chunk_sequence)
-                    logging.debug(f"Encrypted chunk {chunk_sequence}: {encrypted_chunk[:100]}...")
+                    encrypted_chunk = hpke_service.encrypt_chunk(token, client_pubkey, chunk_sequence)
+                    logging.debug(f"Encrypted token {chunk_sequence}: {token[:30]}...")
+                    
+                    # Send encrypted chunk as SSE event
                     yield {"data": encrypted_chunk, "event": "chunk"}
                     chunk_sequence += 1
                     
-                # Send end event
-                yield {"data": "", "event": "end"}
+                # Send end event (also encrypted)
+                end_encrypted = hpke_service.encrypt_chunk("", client_pubkey, chunk_sequence)
+                yield {"data": end_encrypted, "event": "end"}
                 
                 circuit_breaker.record_success()
                 
@@ -151,6 +165,74 @@ async def chat_endpoint(request: Request, chat_request: ChatRequest):
     except Exception as e:
         circuit_breaker.record_failure()
         logging.error(f"Chat endpoint error: {type(e).__name__}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
+        )
+
+
+@app.post("/inference")
+async def inference_endpoint(request: Request, inference_request: InferenceRequest):
+    """
+    Dedicated inference endpoint that accepts plaintext requests and streams 
+    tokens back via Server-Sent Events. This is step 9 implementation.
+    """
+    client_ip = request.client.host
+    
+    # Basic rate limiting (could extend with device-based limiting if needed)
+    request_key = f"inference_{client_ip}"
+    if not rate_limiter.allow_request(client_ip, request_key):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Rate limit exceeded"
+        )
+    
+    # Circuit breaker check
+    if not circuit_breaker.can_make_request():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Service temporarily unavailable"
+        )
+    
+    try:
+        logging.info(f"Starting inference for request {inference_request.request_id}")
+        logging.debug(f"Message: {inference_request.messages[0]['content'][:50]}...")
+        
+        # Create streaming generator
+        async def token_stream():
+            chunk_sequence = 0
+            try:
+                # Stream tokens from llama.cpp via inference service
+                async for token in inference_service.stream_inference(inference_request):
+                    # Check if client is still connected
+                    if settings.ENABLE_CLIENT_DISCONNECT_CANCELLATION:
+                        if await request.is_disconnected():
+                            logging.info(f"Client disconnected for request {inference_request.request_id}")
+                            break
+                    
+                    # Yield token as SSE event
+                    yield {"data": token, "event": "token"}
+                    chunk_sequence += 1
+                    
+                # Send completion event
+                yield {"data": "", "event": "done"}
+                
+                circuit_breaker.record_success()
+                
+            except asyncio.TimeoutError as e:
+                circuit_breaker.record_failure()
+                logging.warning(f"Request {inference_request.request_id} timeout: {e}")
+                yield {"data": "Request timeout", "event": "error"}
+            except Exception as e:
+                circuit_breaker.record_failure()
+                logging.error(f"Inference stream error: {type(e).__name__}")
+                yield {"data": "Internal server error", "event": "error"}
+        
+        return EventSourceResponse(token_stream())
+        
+    except Exception as e:
+        circuit_breaker.record_failure()
+        logging.error(f"Inference endpoint error: {type(e).__name__}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error"

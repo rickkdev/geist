@@ -231,7 +231,7 @@ echo "BASE64_CHUNK" | base64 -d
 
 **Full example all in one:**
 
-python3 create_hpke_request.py "YOUR PROMPT" | grep curl | bash | python3 decode_hpke_response.py
+`python3 create_hpke_request.py "YOUR PROMPT" | grep curl | bash | python3 decode_hpke_response.py`
 
 **Check System Health:**
 
@@ -402,12 +402,33 @@ openssl s_client -connect 10.0.0.2:8001 \
 
 ## 🧠 9. Inference Server Implementation
 
-- [ ] Use llama.cpp HTTP SSE endpoint:
-  - [ ] POST `/inference` (SSE stream of tokens)
-  - [ ] GET `/health`
-- [ ] Router parses llama.cpp SSE and re-frames to client SSE with HPKE per-chunk
-- [ ] Parameters: temperature, top_p, max_tokens; guardrails for limits
-- [ ] Future (GPU): migrate to vLLM/ExLlamaV2; keep router protocol stable
+- [x] Use llama.cpp HTTP SSE endpoint:
+  - [x] POST `/inference` (SSE stream of tokens)
+  - [x] GET `/health`
+- [x] Router parses llama.cpp SSE and re-frames to client SSE with HPKE per-chunk
+- [x] Parameters: temperature, top_p, max_tokens; guardrails for limits
+- [x] Future (GPU): migrate to vLLM/ExLlamaV2; keep router protocol stable
+
+Example:
+
+POST `http://localhost:8000/inference`
+
+Body:
+
+```
+ {
+    "messages": [
+      {
+        "role": "user",
+        "content": "Who were the US presidents in the 1990s? Please list their names and years served."
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "max_tokens": 200,
+    "request_id": "postman-90s-presidents"
+  }
+```
 
 ---
 

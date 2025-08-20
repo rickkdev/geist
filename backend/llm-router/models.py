@@ -67,3 +67,35 @@ class EncryptedChunk(BaseModel):
     ciphertext: str = Field(..., description="Encrypted chunk data (base64)")
     sequence: int = Field(..., description="Chunk sequence number")
     final: bool = Field(default=False, description="Whether this is the final chunk")
+
+
+class InferenceRequest(BaseModel):
+    """
+    Internal inference request (already decrypted).
+    """
+    messages: list[Dict[str, str]] = Field(..., description="Chat messages array")
+    temperature: Optional[float] = Field(default=0.7, ge=0.0, le=2.0)
+    top_p: Optional[float] = Field(default=0.9, ge=0.0, le=1.0) 
+    max_tokens: Optional[int] = Field(default=2048, ge=1, le=8192)
+    request_id: Optional[str] = Field(None, description="Request identifier for tracking")
+    
+    # Parameter guardrails validation
+    def model_post_init(self, __context):
+        """Apply parameter guardrails after model initialization."""
+        # Clamp temperature to safe range
+        if self.temperature < 0.1:
+            self.temperature = 0.1
+        elif self.temperature > 1.5:
+            self.temperature = 1.5
+            
+        # Clamp top_p to safe range  
+        if self.top_p < 0.1:
+            self.top_p = 0.1
+        elif self.top_p > 0.95:
+            self.top_p = 0.95
+            
+        # Clamp max_tokens to prevent abuse
+        if self.max_tokens > 4096:
+            self.max_tokens = 4096
+        elif self.max_tokens < 16:
+            self.max_tokens = 16
