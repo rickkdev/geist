@@ -434,34 +434,68 @@ Body:
 
 ## ⚙️ 10. Configuration Management
 
-- [ ] Settings:
+- [x] Settings:
+  - [x] Complete Pydantic settings class with all configuration options
+  - [x] Environment-based configuration with validation
+  - [x] Helper methods for environment checks and transport configuration
+  - [x] Security settings with production hardening
 
-  ```python
-  from pydantic_settings import BaseSettings
+- [x] `.env.development` and `.env.production`:
+  - [x] Development: UNIX socket transport, verbose logging, relaxed limits
+  - [x] Production: HTTPS/WireGuard transport, mTLS, strict security
 
-  class Settings(BaseSettings):
-      ENVIRONMENT: str = "development"  # "development" | "production"
-      STREAMING_ENABLED: bool = True
-      REQUEST_TTL_SECONDS: int = 60
+- [x] Deployment scripts for env switching:
+  - [x] `deploy-dev.sh`: Development environment setup
+  - [x] `deploy-prod.sh`: Production environment setup with security hardening
+  - [x] `switch-env.sh`: Easy environment switching with status checking
 
-      INFERENCE_TRANSPORT: str = "unix"  # "unix" | "https"
-      INFERENCE_ENDPOINTS: list[str] = ["unix:///run/inference.sock"]  # or ["https://10.0.0.2:8001"]
+- [x] Document config options and procedures:
+  - [x] Complete configuration guide (`docs/configuration-guide.md`)
+  - [x] Environment switching procedures
+  - [x] Security considerations and troubleshooting
+  - [x] Configuration validation and best practices
 
-      CIRCUIT_BREAKER_THRESHOLD: int = 5
-      CIRCUIT_RESET_SECONDS: int = 30
+### 🚀 Configuration Management Usage Commands
 
-      RATE_LIMIT_PER_MINUTE: int = 60
-      RATE_LIMIT_BURST: int = 30
+**Environment Switching:**
 
-      ROUTER_HPKE_JWKS_PATH: str = ".well-known/jwks.json"
+```bash
+# Quick environment switching
+./switch-env.sh dev          # Switch to development
+sudo ./switch-env.sh prod    # Switch to production (requires sudo)
+./switch-env.sh status       # Check current environment status
 
-      class Config:
-          env_file = ".env"
-  ```
+# Individual deployment scripts
+./deploy-dev.sh              # Set up development environment
+sudo ./deploy-prod.sh        # Set up production environment
+```
 
-- [ ] `.env.development` and `.env.production`
-- [ ] Deployment scripts for env switching
-- [ ] Document config options and procedures
+**Configuration Validation:**
+
+```bash
+# Test configuration validity
+python3 -c "from config import get_settings; settings = get_settings(); print(f'Environment: {settings.ENVIRONMENT}')"
+
+# Development validation
+python3 -c "from config import get_settings; s = get_settings(); assert s.is_development() and s.INFERENCE_TRANSPORT == 'unix'"
+
+# Production validation
+python3 -c "from config import get_settings; s = get_settings(); assert s.is_production() and s.MTLS_ENABLED"
+```
+
+**Environment Status:**
+
+```bash
+# Check active configuration
+grep "ENVIRONMENT=" .env
+
+# View current transport settings
+grep -E "(INFERENCE_TRANSPORT|INFERENCE_ENDPOINTS)" .env
+
+# Check service status
+systemctl status llm-router-prod    # Production service
+systemctl status llama-inference    # Development service
+```
 
 ---
 

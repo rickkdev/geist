@@ -84,9 +84,21 @@ class Settings(BaseSettings):
     DEV_DEBUG: bool = False
     
     class Config:
-        env_file = [".env", ".env.development"]  # Try .env.development if it exists
+        env_file = [".env"]  # Primary env file
         env_file_encoding = "utf-8"
         case_sensitive = True
+        
+        @classmethod
+        def prepare_field_env_vars(cls, field_name: str, field_info):
+            """Customize environment variable sources based on current environment."""
+            env_vars = [field_name]
+            
+            # Check if we have an environment-specific override
+            current_env = os.environ.get("ENVIRONMENT", "development")
+            if current_env in ["development", "production"]:
+                env_vars.append(f"{current_env.upper()}_{field_name}")
+                
+            return env_vars
     
     def get_current_timestamp(self) -> datetime:
         """Get current UTC timestamp."""

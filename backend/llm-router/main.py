@@ -71,14 +71,14 @@ app = FastAPI(
     description="Secure, end-to-end encrypted LLM inference router",
     version="1.0.0",
     lifespan=lifespan,
-    docs_url=None,  # Disable docs in production
-    redoc_url=None,  # Disable redoc in production
+    docs_url="/docs" if not settings.DISABLE_DOCS else None,
+    redoc_url="/redoc" if not settings.DISABLE_DOCS else None,
 )
 
 # Add CORS middleware (configure restrictively in production)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"] if settings.ENVIRONMENT == "development" else [],
+    allow_origins=["*"] if settings.should_enable_cors() else [],
     allow_credentials=True,
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
@@ -343,10 +343,11 @@ async def metrics_endpoint():
 if __name__ == "__main__":
     uvicorn.run(
         "main:app",
-        host="0.0.0.0",
-        port=8000,
+        host=settings.HOST,
+        port=settings.PORT,
         ssl_keyfile=settings.SSL_KEYFILE if settings.SSL_ENABLED else None,
         ssl_certfile=settings.SSL_CERTFILE if settings.SSL_ENABLED else None,
-        reload=settings.ENVIRONMENT == "development",
-        access_log=False,  # Disable access logs to prevent sensitive data logging
+        reload=settings.DEV_RELOAD,
+        access_log=not settings.DISABLE_ACCESS_LOGS,
+        log_level=settings.LOG_LEVEL.lower(),
     )
