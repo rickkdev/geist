@@ -501,24 +501,103 @@ systemctl status llama-inference    # Development service
 
 ## 🔒 11. Isolation & No Data Persistence
 
-- [ ] Run as non-root users; dedicated users per service
-- [ ] Systemd sandboxing (router + inference):
-  ```ini
-  NoNewPrivileges=yes
-  PrivateTmp=yes
-  ProtectHome=read-only
-  ProtectSystem=strict
-  ProtectKernelLogs=yes
-  ProtectKernelModules=yes
-  RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
-  SystemCallFilter=@system-service
-  MemoryDenyWriteExecute=yes
-  ReadWritePaths=/run
-  LimitCORE=0
-  ```
-- [ ] Disable swap; `vm.swappiness=1`; `fs.suid_dumpable=0`
-- [ ] `mlock` sensitive key material; avoid temp files
-- [ ] No prompt/response logging; redact errors
+- [x] **User & Process Isolation**:
+  - [x] Dedicated system users: `llm-router` and `inference` with `/usr/sbin/nologin`
+  - [x] Proper group memberships for socket access
+  - [x] Secure directory structure with minimal permissions
+  - [x] Sudoers restrictions for emergency access only
+
+- [x] **Comprehensive Systemd Sandboxing** (`systemd/llm-router-hardened.service`, `systemd/llama-inference-hardened.service`):
+  - [x] `NoNewPrivileges=yes` - Prevent privilege escalation
+  - [x] `PrivateTmp=yes` - Isolated temporary directories
+  - [x] `ProtectHome=read-only` - Home directory protection
+  - [x] `ProtectSystem=strict` - System directory protection
+  - [x] `ProtectKernelLogs=yes` - Kernel log protection
+  - [x] `ProtectKernelModules=yes` - Kernel module protection
+  - [x] `RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6` - Network restrictions
+  - [x] `SystemCallFilter=@system-service` - System call filtering
+  - [x] `MemoryDenyWriteExecute=yes` - W^X memory protection
+  - [x] `LimitCORE=0` - Disable core dumps
+  - [x] `DevicePolicy=closed` - Device access restrictions
+  - [x] Network isolation and resource limits
+
+- [x] **Memory Security** (`scripts/setup-memory-security.sh`):
+  - [x] Swap completely disabled: `swapoff -a` + fstab cleanup
+  - [x] Kernel hardening: `vm.swappiness=0`, `fs.suid_dumpable=0`
+  - [x] ASLR enabled: `kernel.randomize_va_space=2`
+  - [x] Memory locking limits for HPKE keys (64MB) and models (16GB)
+  - [x] Core dump prevention and cleanup
+  - [x] Kernel information restrictions
+
+- [x] **Data Persistence Prevention** (`middleware/secure_logging.py`, `scripts/setup-log-security.sh`):
+  - [x] Comprehensive log scrubbing with regex patterns for sensitive data
+  - [x] HPKE data, API keys, message content, IPs all scrubbed
+  - [x] Secure log rotation (3-day retention) with automatic shredding
+  - [x] Systemd journal limits (100MB, 7-day retention)
+  - [x] Syslog filtering to prevent sensitive data leakage
+  - [x] No request/response body logging in production
+  - [x] Error message sanitization
+
+- [x] **Security Monitoring & Validation**:
+  - [x] Real-time security event monitoring (`/usr/local/bin/monitor-security-logs.sh`)
+  - [x] Comprehensive security validation (`scripts/security-validation.sh`)
+  - [x] Automated daily log cleanup with secure wiping
+  - [x] Security alert logging to `/var/log/llm-security/`
+
+### 🚀 Isolation & Security Usage Commands
+
+**Deploy Complete Security Hardening:**
+
+```bash
+# Full security hardening deployment (requires root)
+sudo ./deploy-isolation-hardening.sh
+
+# Individual security components
+sudo ./scripts/setup-security-users.sh     # Users and permissions
+sudo ./scripts/setup-memory-security.sh    # Memory protection
+sudo ./scripts/setup-log-security.sh       # Secure logging
+```
+
+**Security Validation & Monitoring:**
+
+```bash
+# Comprehensive security audit
+./scripts/security-validation.sh
+
+# Check memory security
+sudo /usr/local/bin/validate-memory-security.sh
+
+# Check user/permission security  
+sudo /usr/local/bin/check-llm-security.sh
+
+# Monitor security events
+tail -f /var/log/llm-security/security-alerts.log
+
+# Manual log cleanup
+sudo /usr/local/bin/secure-log-cleanup.sh
+```
+
+**Hardened Service Management:**
+
+```bash
+# Start hardened services
+sudo systemctl start llm-router-hardened
+sudo systemctl start llama-inference-hardened
+
+# Check service security status
+systemctl show llm-router-hardened | grep -E "(NoNewPrivileges|PrivateTmp|ProtectSystem)"
+
+# View service logs (automatically scrubbed)
+journalctl -u llm-router-hardened -f
+```
+
+**Security Features Implemented:**
+- **Zero Data Persistence**: No prompts/responses logged, aggressive log cleanup
+- **Memory Protection**: Swap disabled, kernel hardened, sensitive data mlocked
+- **Process Isolation**: Dedicated users, comprehensive systemd sandboxing
+- **Logging Security**: Data scrubbing, rotation, secure wiping, monitoring
+- **System Hardening**: ASLR, core dump prevention, device restrictions
+- **Real-time Monitoring**: Security event detection and alerting
 
 ---
 

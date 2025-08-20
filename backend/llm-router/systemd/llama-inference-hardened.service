@@ -1,0 +1,97 @@
+[Unit]
+Description=LLM Inference Server (Hardened)
+Documentation=file:///opt/llm-router/docs/
+After=network.target
+Requires=network.target
+
+[Service]
+Type=exec
+User=inference
+Group=inference
+WorkingDirectory=/var/lib/inference
+ExecStartPre=/bin/rm -f /run/inference/inference.sock
+ExecStart=/opt/llm-router/llama.cpp/build/bin/llama-server -m /var/lib/inference/models/gpt-oss-20b-Q4_K_S.gguf -c 4096 -ngl 0 --port 8001 --host unix:/run/inference/inference.sock
+ExecStartPost=/bin/chgrp llm-router /run/inference/inference.sock
+ExecStartPost=/bin/chmod 660 /run/inference/inference.sock
+ExecStopPost=/bin/rm -f /run/inference/inference.sock
+Restart=always
+RestartSec=5
+KillMode=mixed
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+# Standard output/error
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=llama-inference
+
+# Process and privilege restrictions
+NoNewPrivileges=yes
+RemainAfterExit=no
+
+# Filesystem restrictions
+PrivateTmp=yes
+ProtectHome=true
+ProtectSystem=strict
+ProtectKernelLogs=yes
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+PrivateDevices=yes
+PrivateMounts=yes
+
+# Writable paths (minimal required paths)
+ReadWritePaths=/var/lib/inference /var/log/inference /run/inference /tmp
+ReadOnlyPaths=/var/lib/inference/models
+
+# Network restrictions (more restrictive for inference)
+RestrictAddressFamilies=AF_UNIX
+PrivateNetwork=yes
+IPAddressDeny=any
+
+# System call restrictions
+SystemCallFilter=@system-service
+SystemCallFilter=~@debug @mount @cpu-emulation @obsolete @privileged @reboot @swap @raw-io @network-io
+SystemCallErrorNumber=EPERM
+
+# Memory and execution restrictions  
+MemoryDenyWriteExecute=no  # llama.cpp may need JIT compilation
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+
+# Capabilities (drop all - inference doesn't need any)
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+# Namespace restrictions
+PrivateUsers=yes
+PrivateIPC=yes
+PrivateUTS=yes
+
+# Resource limits (inference needs more memory)
+LimitNOFILE=4096
+LimitNPROC=1024  
+LimitCORE=0
+LimitMEMLOCK=16G  # Large memory lock limit for model loading
+TasksMax=256
+
+# Device access restrictions
+DeviceAllow=/dev/null rw
+DeviceAllow=/dev/zero rw
+DeviceAllow=/dev/random r
+DeviceAllow=/dev/urandom r
+DevicePolicy=closed
+
+# Security and sandboxing
+UMask=0077
+KeyringMode=private
+
+# Logging
+LogLevel=info
+LogTarget=journal
+
+[Install]
+WantedBy=multi-user.target
