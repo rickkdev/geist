@@ -393,10 +393,10 @@ openssl s_client -connect 10.0.0.2:8001 \
 
 ## 🔄 8. Transport Configuration
 
-- [ ] Dev: `unix:///run/inference.sock` (preferred)
-- [ ] Prod: `https://10.0.0.x:8001` over WireGuard + mTLS
-- [ ] Timeouts: connect/read; budget per request; cancel on client disconnect
-- [ ] Health checks: periodic; remove unhealthy nodes from rotation
+- [x] Dev: `unix:///run/inference.sock` (preferred)
+- [x] Prod: `https://10.0.0.x:8001` over WireGuard + mTLS
+- [x] Timeouts: connect/read; budget per request; cancel on client disconnect
+- [x] Health checks: periodic; remove unhealthy nodes from rotation
 
 ---
 

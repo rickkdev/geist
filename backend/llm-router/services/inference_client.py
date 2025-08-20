@@ -8,6 +8,7 @@ from datetime import datetime
 import httpx
 from config import Settings
 from models import DecryptedChatPayload
+from services.health_monitor import HealthMonitor
 
 
 class InferenceClient:
@@ -18,13 +19,16 @@ class InferenceClient:
     def __init__(self, settings: Settings):
         self.settings = settings
         self.client: Optional[httpx.AsyncClient] = None
+        self.health_monitor = HealthMonitor(settings)
         self.active_streams = 0
         self.total_requests = 0
         self.latency_samples: List[float] = []
         self.error_count = 0
         
     async def startup(self):
-        """Initialize the HTTP client."""
+        """Initialize the HTTP client and health monitor."""
+        # Start health monitoring
+        await self.health_monitor.startup()
         if self.settings.INFERENCE_TRANSPORT == "unix":
             # For UNIX socket communication - skip if socket doesn't exist
             socket_path = self.settings.get_inference_socket_path()
@@ -35,8 +39,8 @@ class InferenceClient:
                         transport=httpx.AsyncHTTPTransport(uds=socket_path),
                         timeout=httpx.Timeout(
                             connect=self.settings.INFERENCE_CONNECT_TIMEOUT_SECONDS,
-                            read=self.settings.INFERENCE_TIMEOUT_SECONDS,
-                            write=self.settings.INFERENCE_TIMEOUT_SECONDS,
+                            read=self.settings.INFERENCE_READ_TIMEOUT_SECONDS,
+                            write=self.settings.INFERENCE_WRITE_TIMEOUT_SECONDS,
                             pool=self.settings.INFERENCE_TIMEOUT_SECONDS
                         )
                     )
@@ -47,44 +51,56 @@ class InferenceClient:
                 raise ValueError("UNIX socket path not configured")
         else:
             # For HTTP/HTTPS communication in production or development
-            self.client = httpx.AsyncClient(
-                timeout=httpx.Timeout(
+            client_kwargs = {
+                "timeout": httpx.Timeout(
                     connect=self.settings.INFERENCE_CONNECT_TIMEOUT_SECONDS,
-                    read=self.settings.INFERENCE_TIMEOUT_SECONDS,
-                    write=self.settings.INFERENCE_TIMEOUT_SECONDS,
+                    read=self.settings.INFERENCE_READ_TIMEOUT_SECONDS,
+                    write=self.settings.INFERENCE_WRITE_TIMEOUT_SECONDS,
                     pool=self.settings.INFERENCE_TIMEOUT_SECONDS
                 )
-            )
+            }
+            
+            # Add mTLS configuration for production
+            if self.settings.should_use_mtls():
+                import ssl
+                
+                # Create SSL context for mTLS
+                ssl_context = ssl.create_default_context()
+                
+                # Load client certificate and key
+                if self.settings.MTLS_CLIENT_CERT_PATH and self.settings.MTLS_CLIENT_KEY_PATH:
+                    ssl_context.load_cert_chain(
+                        self.settings.MTLS_CLIENT_CERT_PATH,
+                        self.settings.MTLS_CLIENT_KEY_PATH
+                    )
+                
+                # Load CA certificate for verification
+                if self.settings.MTLS_CA_CERT_PATH:
+                    ssl_context.load_verify_locations(self.settings.MTLS_CA_CERT_PATH)
+                
+                # Configure hostname verification
+                if not self.settings.MTLS_VERIFY_HOSTNAME:
+                    ssl_context.check_hostname = False
+                    ssl_context.verify_mode = ssl.CERT_NONE
+                
+                client_kwargs["verify"] = ssl_context
+                logging.info("mTLS enabled for inference client")
+            
+            self.client = httpx.AsyncClient(**client_kwargs)
     
     async def shutdown(self):
-        """Close the HTTP client."""
+        """Close the HTTP client and health monitor."""
         if self.client:
             await self.client.aclose()
+        await self.health_monitor.shutdown()
     
     async def health_check(self) -> bool:
-        """Check if inference server is healthy."""
-        if not self.client:
-            return False
-            
-        try:
-            if self.settings.INFERENCE_TRANSPORT == "unix":
-                # Use /v1/models endpoint as health check since llama.cpp doesn't have /health
-                response = await self.client.get("http://localhost/v1/models")
-            else:
-                # For HTTP/HTTPS endpoints, use the first available
-                urls = self.settings.get_inference_https_urls()
-                if not urls:
-                    return False
-                response = await self.client.get(f"{urls[0]}/v1/models")
-            
-            return response.status_code == 200
-        except Exception as e:
-            logging.error(f"Health check failed: {type(e).__name__}")
-            return False
+        """Check if any inference servers are healthy."""
+        return self.health_monitor.get_healthy_node_count() > 0
     
-    async def stream_chat(self, payload: DecryptedChatPayload) -> AsyncGenerator[str, None]:
+    async def stream_chat(self, payload: DecryptedChatPayload, request_id: str = None) -> AsyncGenerator[str, None]:
         """
-        Stream chat completion from inference server.
+        Stream chat completion from inference server with request budget and cancellation support.
         """
         if not self.client:
             raise RuntimeError("Client not initialized")
@@ -92,6 +108,10 @@ class InferenceClient:
         self.active_streams += 1
         self.total_requests += 1
         start_time = time.time()
+        
+        # Set up request budget timeout
+        budget_timeout = self.settings.REQUEST_BUDGET_SECONDS
+        request_deadline = start_time + budget_timeout
         
         try:
             # Convert to llama.cpp chat completions format
@@ -104,14 +124,16 @@ class InferenceClient:
                 "stream_options": {"include_usage": False}
             }
             
-            # Choose endpoint based on transport
+            # Choose endpoint using health monitor
             if self.settings.INFERENCE_TRANSPORT == "unix":
                 url = "http://localhost/v1/chat/completions"
             else:
-                urls = self.settings.get_inference_https_urls()
-                if not urls:
-                    raise RuntimeError("No HTTPS inference endpoints configured")
-                url = f"{urls[0]}/v1/chat/completions"
+                # Get a healthy endpoint from the health monitor
+                healthy_endpoint = await self.health_monitor.get_healthy_endpoint()
+                if healthy_endpoint == "unix_socket":
+                    url = "http://localhost/v1/chat/completions"
+                else:
+                    url = f"{healthy_endpoint}/v1/chat/completions"
             
             async with self.client.stream(
                 "POST",
@@ -122,6 +144,12 @@ class InferenceClient:
                 response.raise_for_status()
                 
                 async for line in response.aiter_lines():
+                    # Check request budget timeout
+                    current_time = time.time()
+                    if current_time > request_deadline:
+                        logging.warning(f"Request {request_id} exceeded budget timeout of {budget_timeout}s")
+                        raise asyncio.TimeoutError("Request budget exceeded")
+                    
                     if line.startswith("data: "):
                         data = line[6:]  # Remove "data: " prefix
                         
@@ -186,3 +214,11 @@ class InferenceClient:
         if self.total_requests == 0:
             return 0.0
         return (self.error_count / self.total_requests) * 100
+    
+    def get_health_status(self) -> Dict:
+        """Get detailed health status of all monitored nodes."""
+        return self.health_monitor.get_health_status()
+    
+    def get_healthy_node_count(self) -> int:
+        """Get the number of currently healthy nodes."""
+        return self.health_monitor.get_healthy_node_count()

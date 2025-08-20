@@ -56,6 +56,8 @@ class MetricsResponse(BaseModel):
     inference_latency_p95: float = Field(..., description="95th percentile inference latency (ms)")
     tokens_per_second: float = Field(..., description="Average tokens per second")
     error_rate_5xx: float = Field(..., description="5xx error rate percentage")
+    healthy_nodes: int = Field(..., description="Number of healthy inference nodes")
+    node_health_status: Dict[str, Any] = Field(..., description="Detailed health status of all nodes")
 
 
 class EncryptedChunk(BaseModel):

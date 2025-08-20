@@ -109,12 +109,20 @@ async def chat_endpoint(request: Request, chat_request: ChatRequest):
         decrypted_payload = hpke_service.decrypt_request(chat_request)
         logging.info(f"Decrypted payload: {decrypted_payload.messages[0]['content'][:50]}...")
         
-        # Create streaming generator
+        # Create streaming generator with client disconnect detection
         async def event_stream():
             chunk_sequence = 0
             try:
                 logging.info(f"Starting streaming for request {chat_request.request_id}")
-                async for chunk in inference_client.stream_chat(decrypted_payload):
+                
+                # Stream with request ID for budget tracking
+                async for chunk in inference_client.stream_chat(decrypted_payload, chat_request.request_id):
+                    # Check if client is still connected (if cancellation is enabled)
+                    if settings.ENABLE_CLIENT_DISCONNECT_CANCELLATION:
+                        if await request.is_disconnected():
+                            logging.info(f"Client disconnected for request {chat_request.request_id}, cancelling stream")
+                            break
+                    
                     # Re-encrypt each chunk with HPKE
                     # Note: In production, you'd use the client's public key from request
                     # For now, we'll use the device pubkey from the request
@@ -129,6 +137,10 @@ async def chat_endpoint(request: Request, chat_request: ChatRequest):
                 
                 circuit_breaker.record_success()
                 
+            except asyncio.TimeoutError as e:
+                circuit_breaker.record_failure()
+                logging.warning(f"Request {chat_request.request_id} timeout: {e}")
+                yield {"data": "Request timeout", "event": "error"}
             except Exception as e:
                 circuit_breaker.record_failure()
                 logging.error(f"Stream error: {type(e).__name__}")
@@ -234,6 +246,8 @@ async def metrics_endpoint():
             "inference_latency_p95": inference_client.get_latency_p95(),
             "tokens_per_second": inference_client.get_tokens_per_second(),
             "error_rate_5xx": inference_client.get_error_rate(),
+            "healthy_nodes": inference_client.get_healthy_node_count(),
+            "node_health_status": inference_client.get_health_status(),
         }
         return MetricsResponse(**metrics)
     except Exception as e:

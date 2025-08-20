@@ -29,9 +29,26 @@ class Settings(BaseSettings):
     
     # Inference transport settings
     INFERENCE_TRANSPORT: str = "unix"  # "unix" | "https"
-    INFERENCE_ENDPOINTS: List[str] = ["/tmp/inference.sock"]  # UNIX socket paths or HTTPS URLs
+    INFERENCE_ENDPOINTS: List[str] = ["/run/inference.sock"]  # UNIX socket paths or HTTPS URLs
     INFERENCE_TIMEOUT_SECONDS: int = 60
     INFERENCE_CONNECT_TIMEOUT_SECONDS: int = 10
+    INFERENCE_READ_TIMEOUT_SECONDS: int = 120  # Longer read timeout for streaming
+    INFERENCE_WRITE_TIMEOUT_SECONDS: int = 30  # Write timeout for requests
+    REQUEST_BUDGET_SECONDS: int = 300  # Maximum total time per request
+    ENABLE_CLIENT_DISCONNECT_CANCELLATION: bool = True  # Cancel on client disconnect
+    
+    # Health check settings
+    HEALTH_CHECK_INTERVAL_SECONDS: int = 30  # How often to check node health
+    HEALTH_CHECK_TIMEOUT_SECONDS: int = 5    # Timeout for each health check
+    UNHEALTHY_THRESHOLD: int = 3             # Consecutive failures before marking unhealthy
+    HEALTHY_THRESHOLD: int = 2               # Consecutive successes before marking healthy
+    
+    # Production mTLS settings
+    MTLS_ENABLED: bool = False  # Enable mTLS for production
+    MTLS_CLIENT_CERT_PATH: Optional[str] = None  # Client certificate for mTLS
+    MTLS_CLIENT_KEY_PATH: Optional[str] = None   # Client private key for mTLS
+    MTLS_CA_CERT_PATH: Optional[str] = None      # CA certificate for verification
+    MTLS_VERIFY_HOSTNAME: bool = True            # Verify hostname in certificates
     
     # Circuit breaker settings
     CIRCUIT_BREAKER_THRESHOLD: int = 5
@@ -98,6 +115,17 @@ class Settings(BaseSettings):
     def should_enable_cors(self) -> bool:
         """Determine if CORS should be enabled (only in development)."""
         return self.is_development()
+    
+    def get_production_endpoints(self) -> List[str]:
+        """Get production inference endpoints with WireGuard IPs."""
+        if self.is_production() and self.INFERENCE_TRANSPORT == "https":
+            # Production endpoints should use WireGuard private network IPs
+            return [url for url in self.INFERENCE_ENDPOINTS if url.startswith("https://10.0.0.")]
+        return []
+    
+    def should_use_mtls(self) -> bool:
+        """Check if mTLS should be enabled for inference connections."""
+        return self.is_production() and self.MTLS_ENABLED and self.INFERENCE_TRANSPORT == "https"
 
 
 @lru_cache()
