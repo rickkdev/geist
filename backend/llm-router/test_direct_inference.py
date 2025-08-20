@@ -58,7 +58,7 @@ async def test_direct_inference():
             if chunk_count > 50:
                 break
         
-        print(f"\n✅ Streaming completed successfully!")
+        print("\n✅ Streaming completed successfully!")
         print(f"   Total chunks: {chunk_count}")
         print(f"   Full response: {full_response[:200]}...")
         

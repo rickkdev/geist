@@ -7,7 +7,7 @@ Validates code structure and implementation without requiring running servers.
 import ast
 import os
 import sys
-from typing import List, Dict, Any
+from typing import Dict, Any
 
 
 def analyze_python_file(filepath: str) -> Dict[str, Any]:

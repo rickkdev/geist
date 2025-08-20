@@ -15,7 +15,7 @@ sys.path.insert(0, '.')
 
 from config import get_settings
 from services.hpke_service import HPKEService
-from models import ChatRequest, DecryptedChatPayload
+from models import ChatRequest
 
 
 def test_hpke_encryption_flow():

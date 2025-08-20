@@ -603,14 +603,118 @@ journalctl -u llm-router-hardened -f
 
 ## 🧪 12. Testing Pipeline
 
-- [ ] Unit tests:
-  - [ ] HPKE round-trip, replay rejection, key rotation handling
-  - [ ] Prompt formatting
-- [ ] Integration tests:
-  - [ ] Mobile-side HPKE → router → llama.cpp (SSE) → router → client decrypt
-  - [ ] Circuit breaker and retry behavior
-- [ ] Load tests (k6/Locust): p50/p95 latency, tokens/sec, concurrency
-- [ ] CI (GitHub Actions): lint (ruff), type-check (mypy), tests (pytest); ephemeral llama.cpp in CI if feasible
+- [x] **Unit tests** (`tests/test_hpke_unit.py`):
+  - [x] HPKE round-trip encryption/decryption testing
+  - [x] Replay protection mechanisms (timestamp validation, request ID tracking)
+  - [x] Key rotation handling and validation
+  - [x] Memory security operations
+  - [x] Error handling and edge cases
+  - [x] Concurrent request processing
+  - [x] Invalid input validation
+  - [x] Security logging validation
+
+- [x] **Integration tests** (`tests/test_integration_e2e.py`):
+  - [x] Complete mobile-side HPKE → router → inference flow
+  - [x] Server-Sent Events (SSE) streaming with HPKE encryption
+  - [x] Circuit breaker and retry behavior testing
+  - [x] Rate limiting functionality
+  - [x] Health checks and monitoring endpoints
+  - [x] Error response format validation
+  - [x] Security headers and CORS validation
+  - [x] Timeout and network error handling
+
+- [x] **Load tests** (`tests/load/`):
+  - [x] k6 load testing script with multiple scenarios
+  - [x] Locust load testing with realistic user behavior simulation
+  - [x] Performance metrics: p50/p95 latency, tokens/sec, concurrency
+  - [x] Automated load test execution script
+  - [x] Gradual ramp-up, sustained load, spike, and stress testing
+  - [x] Rate limiting and circuit breaker validation under load
+
+- [x] **Test infrastructure** (`tests/`):
+  - [x] Comprehensive pytest configuration (`conftest.py`, `pytest.ini`)
+  - [x] Test utilities and helper functions
+  - [x] Mock fixtures for dependencies
+  - [x] Performance timing utilities
+  - [x] Error simulation framework
+  - [x] Test data generators
+
+- [x] **Test automation** (`Makefile`, `tests/run_tests.py`):
+  - [x] Unified test runner with multiple test categories
+  - [x] Code quality checks (ruff linting, mypy type checking)
+  - [x] Coverage reporting with HTML output
+  - [x] Development workflow commands
+  - [x] CI/CD simulation pipeline
+  - [x] Load test execution automation
+
+- [ ] **CI (GitHub Actions)**: lint (ruff), type-check (mypy), tests (pytest); ephemeral llama.cpp in CI if feasible
+
+### 🚀 Testing Pipeline Usage Commands
+
+**Quick Development Testing:**
+```bash
+# Fast feedback loop for development
+make quick                    # Lint + unit tests
+make dev-check               # Format + lint + type-check + unit tests
+make test-unit --verbose     # Detailed unit test output
+
+# Individual test categories
+make test-integration        # End-to-end integration tests
+make test-security          # Security-focused tests
+make test-load              # Load tests with k6 (requires running server)
+```
+
+**Comprehensive Testing:**
+```bash
+# Complete test suite
+make test-all               # All tests with full reporting
+python tests/run_tests.py all --verbose
+
+# Coverage analysis
+make coverage-html          # Generate HTML coverage report
+make generate-reports       # All reports (coverage + load test results)
+
+# Performance testing
+make benchmark              # Performance benchmark tests
+make test-load-stress       # Stress testing with high load
+make test-load-spike        # Spike testing with sudden load increases
+```
+
+**Load Testing:**
+```bash
+# Different load testing tools and scenarios
+make test-load              # Basic k6 smoke test
+make test-load-locust       # Locust-based load testing
+make test-load-comprehensive # Full load test suite
+
+# Manual load testing
+./tests/load/run-load-tests.sh k6 -d 5m -v 50 -t load
+./tests/load/run-load-tests.sh locust -d 3m -u 100 -r 10 -t stress
+```
+
+**CI/CD Simulation:**
+```bash
+# Simulate complete CI/CD pipeline
+make ci-test                # Full pipeline: deps → quality → all tests
+
+# Individual quality checks
+make lint                   # Code linting with ruff
+make type-check            # Type checking with mypy  
+make format                # Code formatting
+```
+
+**Test Results and Reports:**
+- Unit test coverage: `tests/coverage/index.html`
+- Load test results: `tests/load/results/`
+- Pytest reports: Terminal output with detailed failure information
+- Performance benchmarks: Automated timing and memory usage analysis
+
+**Test Features Implemented:**
+- **Security Testing**: HPKE encryption validation, replay protection, input sanitization
+- **Performance Testing**: Response time measurement, throughput analysis, concurrent load handling
+- **Reliability Testing**: Circuit breaker validation, retry mechanism testing, error recovery
+- **Scalability Testing**: Load ramp-up scenarios, stress testing, spike handling
+- **Compatibility Testing**: Multiple client scenario simulation, edge case handling
 
 ---
 

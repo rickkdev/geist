@@ -39,7 +39,7 @@ def decode_hpke_response():
                     # Add to full response
                     full_response += decrypted_chunk
                     
-            except (json.JSONDecodeError, Exception) as e:
+            except (json.JSONDecodeError, Exception):
                 # Skip malformed chunks
                 continue
         

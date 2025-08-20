@@ -34,6 +34,7 @@ class PubkeyResponse(BaseModel):
     next_pubkey: Optional[str] = Field(None, description="Next HPKE public key for rotation (base64)")
     key_id: str = Field(..., description="Current key identifier")
     expires_at: datetime = Field(..., description="Current key expiration time")
+    algorithm: str = Field(..., description="HPKE algorithm identifier")
 
 
 class HealthResponse(BaseModel):

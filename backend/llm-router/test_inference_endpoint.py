@@ -6,7 +6,6 @@ Tests both direct inference and streaming with parameter guardrails.
 
 import asyncio
 import httpx
-import json
 import time
 from datetime import datetime
 
@@ -128,7 +127,7 @@ async def test_parameter_guardrails():
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             print("Testing parameters that trigger our custom guardrails:")
-            print(f"Input: temp=1.8, top_p=0.98, max_tokens=5000")
+            print("Input: temp=1.8, top_p=0.98, max_tokens=5000")
             print("Expected: clamped to temp=1.5, top_p=0.95, max_tokens=4096")
             
             response = await client.post(

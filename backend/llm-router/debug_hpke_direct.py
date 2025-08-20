@@ -14,7 +14,7 @@ sys.path.insert(0, '.')
 from config import get_settings
 from services.hpke_service import HPKEService
 from services.inference_client import InferenceClient
-from models import ChatRequest, DecryptedChatPayload
+from models import ChatRequest
 
 async def debug_hpke_direct():
     """Debug the HPKE flow by calling functions directly."""

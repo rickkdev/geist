@@ -3,7 +3,6 @@ import json
 import logging
 import time
 from typing import AsyncGenerator, Dict, List, Optional
-from datetime import datetime
 
 import httpx
 from config import Settings

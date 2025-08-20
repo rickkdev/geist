@@ -5,7 +5,7 @@ import os
 import ctypes
 import ctypes.util
 from datetime import datetime, timedelta, timezone
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional
 
 import hpke
 from cryptography.hazmat.primitives import serialization
