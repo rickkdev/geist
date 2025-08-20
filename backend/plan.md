@@ -146,14 +146,14 @@ Optional Python adapter (normalize SSE, map params) if needed for advanced routi
 
 ## 🔐 5. Router FastAPI Server Setup
 
-- [ ] Create FastAPI app with:
-  - [ ] `/api/chat` POST (SSE response): accepts HPKE-encrypted request; streams HPKE-encrypted chunks back
-  - [ ] `/api/pubkey` GET: returns current and next router HPKE public keys (for rotation)
-  - [ ] `/health` GET: liveness/readiness (no sensitive info)
-  - [ ] `/metrics` GET: Prometheus metrics (no payloads)
-- [ ] Disable logging of body/headers; scrub traces
-- [ ] Retries with capped exponential backoff; circuit breaker on inference failures
-- [ ] Rate limiting per device pubkey and per-IP; optional PoW under stress
+- [x] Create FastAPI app with:
+  - [x] `/api/chat` POST (SSE response): accepts HPKE-encrypted request; streams HPKE-encrypted chunks back
+  - [x] `/api/pubkey` GET: returns current and next router HPKE public keys (for rotation)
+  - [x] `/health` GET: liveness/readiness (no sensitive info)
+  - [x] `/metrics` GET: Prometheus metrics (no payloads)
+- [x] Disable logging of body/headers; scrub traces
+- [x] Retries with capped exponential backoff; circuit breaker on inference failures
+- [x] Rate limiting per device pubkey and per-IP; optional PoW under stress
 
 Example local run:
 
