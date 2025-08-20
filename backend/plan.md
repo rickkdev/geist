@@ -101,11 +101,13 @@
   cd llama.cpp
   make
   ```
-- [x] Download gguf model (start practical: `Llama-3.1-8B-Instruct` or `Qwen2.5-14B-Instruct`, `Q4_K_M`)
-- [x] Test basic llama.cpp server:
+- [x] Download gguf model (start practical: `the gpt oss 20b model`)
+- [x] Test/ start basic llama.cpp server:
+
   ```bash
   ./build/bin/llama-server -m models/gpt-oss-20b-Q4_K_S.gguf -c 4096 -ngl 0 --port 8001 --host 127.0.0.1
   ```
+
 - [x] Verify HTTP API works:
   ```bash
   curl -X POST http://localhost:8001/v1/chat/completions \
@@ -121,24 +123,24 @@
   - Process-level access control
   - Security isolation from network stack
 - [x] Choose UNIX socket approach: socat, nginx stream module, or custom Python adapter
-  <!-- COMPLETED: Selected socat for simplicity and reliability -->
+<!-- COMPLETED: Selected socat for simplicity and reliability -->
 - [x] Create UNIX socket at `/run/inference.sock` with proper permissions (660)
-  <!-- COMPLETED: Created systemd services with proper permissions and user/group setup -->
+<!-- COMPLETED: Created systemd services with proper permissions and user/group setup -->
 - [x] Set up proxy/adapter to forward HTTP requests from UNIX socket to localhost:8001
-  <!-- COMPLETED: socat proxy forwards all HTTP traffic bidirectionally -->
+<!-- COMPLETED: socat proxy forwards all HTTP traffic bidirectionally -->
 - [x] Configure socket ownership for router service access
-  <!-- COMPLETED: Socket owned by inference:router group with 660 permissions -->
+<!-- COMPLETED: Socket owned by inference:router group with 660 permissions -->
 - [x] Test UNIX socket connectivity:
   ```bash
   curl --unix-socket /run/inference.sock http://localhost/v1/chat/completions
   # TESTED: Works for health, chat completions, and streaming
   ```
 - [x] Add systemd socket activation for automatic socket creation on boot
-  <!-- COMPLETED: Created llama-inference.service and inference-socket.service -->
+<!-- COMPLETED: Created llama-inference.service and inference-socket.service -->
 - [x] Implement graceful socket cleanup on service restart/stop
-  <!-- COMPLETED: ExecStartPre/ExecStopPost handle socket cleanup -->
+<!-- COMPLETED: ExecStartPre/ExecStopPost handle socket cleanup -->
 - [x] Health endpoint: `/health` (readiness: model loaded; liveness)
-  <!-- COMPLETED: Available at /health endpoint through UNIX socket -->
+<!-- COMPLETED: Available at /health endpoint through UNIX socket -->
 
 Optional Python adapter (normalize SSE, map params) if needed for advanced routing.
 
@@ -179,6 +181,7 @@ uvicorn main:app --host 0.0.0.0 --port 443 --ssl-keyfile=... --ssl-certfile=...
 ### 🚀 HPKE System Usage Commands
 
 **Testing HPKE Implementation:**
+
 ```bash
 # Test the complete HPKE flow
 python test_hpke_implementation.py
@@ -191,6 +194,7 @@ python debug_hpke_direct.py
 ```
 
 **Generate Encrypted Requests:**
+
 ```bash
 # Create curl command for any question
 python3 create_hpke_request.py "Your question here"
@@ -202,6 +206,7 @@ python3 create_hpke_request.py "What are the benefits of renewable energy?"
 ```
 
 **Send Encrypted Requests:**
+
 ```bash
 # Method 1: Use generator (recommended)
 python3 create_hpke_request.py "Who were the presidents in the US in the 90s?" | grep curl | bash
@@ -211,6 +216,7 @@ curl -X POST http://localhost:8000/api/chat -H "Content-Type: application/json" 
 ```
 
 **Decrypt Streaming Responses:**
+
 ```bash
 # Method 1: Pipe directly to decoder (recommended)
 curl ... | python3 decode_hpke_response.py
@@ -223,7 +229,12 @@ python3 decode_hpke_response.py < encrypted_response.txt
 echo "BASE64_CHUNK" | base64 -d
 ```
 
+**Full example all in one:**
+
+python3 create_hpke_request.py "YOUR PROMPT" | grep curl | bash | python3 decode_hpke_response.py
+
 **Check System Health:**
+
 ```bash
 # Health check
 curl http://localhost:8000/health
@@ -236,6 +247,7 @@ curl -X POST http://localhost:8000/api/chat/debug -H "Content-Type: application/
 ```
 
 **Key Management:**
+
 ```bash
 # Keys are stored in: ./dev-keys/ (development)
 # Production keys: /etc/llm-router/
@@ -248,17 +260,20 @@ ls -la dev-keys/
 ### 📱 Mobile App Implementation Hints (React Native + TypeScript)
 
 **Architecture Overview:**
+
 - React Native Frontend with TypeScript + Expo (ejected)
 - Use @noble/curves and @noble/hashes for HPKE crypto operations in pure JavaScript
 - Store device private keys in expo-secure-store with biometric authentication
 - Implement SSE streaming with fetch API for real-time encrypted responses
 
 **Required Dependencies:**
+
 - @noble/curves @noble/hashes for cryptographic operations
 - expo-secure-store for secure key storage (already installed)
 - Built-in fetch API for HTTP requests and SSE streaming
 
 **1. HPKE Client Setup:**
+
 - Create HPKEClient class to handle X25519-HKDF-SHA256 + ChaCha20-Poly1305 operations
 - Generate device key pair on first launch, store private key securely with biometric protection
 - Implement HPKE seal operation: ephemeral key generation, ECDH, HKDF key derivation
@@ -266,6 +281,7 @@ ls -la dev-keys/
 - Use ChaCha20-Poly1305 AEAD with derived key and nonce for message encryption
 
 **2. Secure Request Flow:**
+
 - Initialize HPKE client and retrieve device keys from secure storage
 - Fetch current router public key from /api/pubkey endpoint with certificate pinning
 - Encrypt user message using HPKE seal operation with router's public key
@@ -275,6 +291,7 @@ ls -la dev-keys/
 - Yield decrypted content as async generator for real-time UI updates
 
 **3. Key Management & Rotation:**
+
 - Periodically fetch /api/pubkey to get current and next router public keys
 - Cache router keys in secure storage for offline operation
 - Implement certificate pinning using SHA256 fingerprint validation
@@ -282,6 +299,7 @@ ls -la dev-keys/
 - Validate router public key against hardcoded fingerprint before use
 
 **4. Security Best Practices:**
+
 - Store all sensitive keys in expo-secure-store with authentication prompts
 - Implement client-side rate limiting to prevent abuse
 - Add timestamp validation for replay attack protection (60s window)
@@ -290,6 +308,7 @@ ls -la dev-keys/
 - Use secure random number generation for all cryptographic operations
 
 **5. Error Handling:**
+
 - Define HPKEError types: encryption, decryption, network, rate limited, key rotation
 - Implement HPKEResult wrapper for safe operation handling
 - Create HPKEClientError class with specific error types and retry information
@@ -305,6 +324,8 @@ ls -la dev-keys/
 - [x] Router ⇄ inference via UNIX domain socket: `/run/inference.sock`
 - [x] Firewall: allow only 22/443; block local TCP binding for inference
 
+Run with `./start-dev.sh`
+
 ### Production
 
 - [x] WireGuard between router and inference servers (private subnet only)
@@ -312,9 +333,12 @@ ls -la dev-keys/
 - [x] App-layer mTLS (short-lived certs via Smallstep/step-ca); cert pinning on router
 - [x] Connection pooling, keep-alive, backoff/jitter
 
+Run with `./start-prod.sh`
+
 ### 🚀 Network Configuration Usage Commands
 
 **Development Setup:**
+
 ```bash
 # Apply firewall rules (development)
 ./scripts/setup-firewall-dev.sh
@@ -327,6 +351,7 @@ curl --unix-socket /run/inference.sock http://localhost/health
 ```
 
 **Production Setup:**
+
 ```bash
 # Configure WireGuard on router server
 sudo ./scripts/setup-wireguard-prod.sh  # Select: router
@@ -349,12 +374,14 @@ openssl s_client -connect 10.0.0.2:8001 \
 ```
 
 **Security Features:**
+
 - Development: UNIX socket isolation, firewall protection
 - Production: WireGuard encryption, mTLS authentication, network isolation
 - Automatic certificate rotation and monitoring
 - Comprehensive network security documentation
 
 **Files Created:**
+
 - `scripts/setup-firewall-dev.sh` - Development firewall configuration
 - `scripts/verify-network-config.sh` - Network configuration verification
 - `scripts/setup-wireguard-prod.sh` - Production WireGuard setup
