@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     
     # Inference transport settings
     INFERENCE_TRANSPORT: str = "unix"  # "unix" | "https"
-    INFERENCE_ENDPOINTS: List[str] = ["/run/inference.sock"]  # UNIX socket paths or HTTPS URLs
+    INFERENCE_ENDPOINTS: List[str] = ["/tmp/inference.sock"]  # UNIX socket paths or HTTPS URLs
     INFERENCE_TIMEOUT_SECONDS: int = 60
     INFERENCE_CONNECT_TIMEOUT_SECONDS: int = 10
     

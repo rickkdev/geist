@@ -152,7 +152,7 @@ async def health_check():
             status_code=status_code,
             content={
                 "status": "healthy" if inference_healthy else "unhealthy",
-                "timestamp": settings.get_current_timestamp(),
+                "timestamp": settings.get_current_timestamp().isoformat(),
                 "version": "1.0.0"
             }
         )
@@ -162,7 +162,7 @@ async def health_check():
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             content={
                 "status": "unhealthy",
-                "timestamp": settings.get_current_timestamp(),
+                "timestamp": settings.get_current_timestamp().isoformat(),
                 "version": "1.0.0"
             }
         )

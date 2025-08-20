@@ -26,16 +26,23 @@ class InferenceClient:
     async def startup(self):
         """Initialize the HTTP client."""
         if self.settings.INFERENCE_TRANSPORT == "unix":
-            # For UNIX socket communication
+            # For UNIX socket communication - skip if socket doesn't exist
             socket_path = self.settings.get_inference_socket_path()
             if socket_path:
-                self.client = httpx.AsyncClient(
-                    transport=httpx.AsyncHTTPTransport(uds=socket_path),
-                    timeout=httpx.Timeout(
-                        connect=self.settings.INFERENCE_CONNECT_TIMEOUT_SECONDS,
-                        read=self.settings.INFERENCE_TIMEOUT_SECONDS
+                import os
+                if os.path.exists(socket_path):
+                    self.client = httpx.AsyncClient(
+                        transport=httpx.AsyncHTTPTransport(uds=socket_path),
+                        timeout=httpx.Timeout(
+                            connect=self.settings.INFERENCE_CONNECT_TIMEOUT_SECONDS,
+                            read=self.settings.INFERENCE_TIMEOUT_SECONDS,
+                            write=self.settings.INFERENCE_TIMEOUT_SECONDS,
+                            pool=self.settings.INFERENCE_TIMEOUT_SECONDS
+                        )
                     )
-                )
+                else:
+                    logging.warning(f"UNIX socket {socket_path} not found - inference will be unavailable")
+                    self.client = None
             else:
                 raise ValueError("UNIX socket path not configured")
         else:
@@ -43,7 +50,9 @@ class InferenceClient:
             self.client = httpx.AsyncClient(
                 timeout=httpx.Timeout(
                     connect=self.settings.INFERENCE_CONNECT_TIMEOUT_SECONDS,
-                    read=self.settings.INFERENCE_TIMEOUT_SECONDS
+                    read=self.settings.INFERENCE_TIMEOUT_SECONDS,
+                    write=self.settings.INFERENCE_TIMEOUT_SECONDS,
+                    pool=self.settings.INFERENCE_TIMEOUT_SECONDS
                 )
             )
     

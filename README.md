@@ -1,4 +1,4 @@
-# Frontend
+# Frontend !
 
 The whole frontend is a react native expo projected that has been ejected to use llama.cpp.
 
