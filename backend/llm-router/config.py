@@ -90,9 +90,9 @@ class Settings(BaseSettings):
         return None
     
     def get_inference_https_urls(self) -> List[str]:
-        """Get HTTPS URLs for inference servers if using https transport."""
-        if self.INFERENCE_TRANSPORT == "https":
-            return [url for url in self.INFERENCE_ENDPOINTS if url.startswith("https://")]
+        """Get HTTP/HTTPS URLs for inference servers if using http/https transport."""
+        if self.INFERENCE_TRANSPORT in ["http", "https"]:
+            return [url for url in self.INFERENCE_ENDPOINTS if url.startswith(("http://", "https://"))]
         return []
     
     def should_enable_cors(self) -> bool:

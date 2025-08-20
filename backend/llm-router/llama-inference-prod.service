@@ -1,0 +1,35 @@
+[Unit]
+Description=Llama.cpp Inference Server (Production)
+After=network.target wg-quick@wg0.service
+Wants=network.target
+Requires=wg-quick@wg0.service
+
+[Service]
+Type=simple
+User=inference
+Group=inference
+# Bind only to WireGuard interface in production
+ExecStart=/opt/llama.cpp/build/bin/llama-server -m /opt/llama.cpp/models/gpt-oss-20b-Q4_K_S.gguf -c 4096 -ngl 0 --port 8001 --host 10.0.0.2
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+# Security hardening
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=read-only
+ProtectSystem=strict
+ProtectKernelLogs=yes
+ProtectKernelModules=yes
+RestrictAddressFamilies=AF_INET AF_INET6
+SystemCallFilter=@system-service
+MemoryDenyWriteExecute=yes
+LimitCORE=0
+
+# Production-specific settings
+Environment=ENVIRONMENT=production
+Environment=LOG_LEVEL=INFO
+
+[Install]
+WantedBy=multi-user.target

@@ -46,7 +46,7 @@ class InferenceClient:
             else:
                 raise ValueError("UNIX socket path not configured")
         else:
-            # For HTTPS communication in production
+            # For HTTP/HTTPS communication in production or development
             self.client = httpx.AsyncClient(
                 timeout=httpx.Timeout(
                     connect=self.settings.INFERENCE_CONNECT_TIMEOUT_SECONDS,
@@ -68,13 +68,14 @@ class InferenceClient:
             
         try:
             if self.settings.INFERENCE_TRANSPORT == "unix":
-                response = await self.client.get("http://localhost/health")
+                # Use /v1/models endpoint as health check since llama.cpp doesn't have /health
+                response = await self.client.get("http://localhost/v1/models")
             else:
-                # For HTTPS endpoints, use the first available
+                # For HTTP/HTTPS endpoints, use the first available
                 urls = self.settings.get_inference_https_urls()
                 if not urls:
                     return False
-                response = await self.client.get(f"{urls[0]}/health")
+                response = await self.client.get(f"{urls[0]}/v1/models")
             
             return response.status_code == 200
         except Exception as e:

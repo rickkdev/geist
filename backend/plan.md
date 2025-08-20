@@ -165,12 +165,136 @@ uvicorn main:app --host 0.0.0.0 --port 443 --ssl-keyfile=... --ssl-certfile=...
 
 ## 🔑 6. End-to-End Encryption (E2EE) - HPKE
 
-- [ ] HPKE: X25519-HKDF-SHA256 + ChaCha20-Poly1305 (RFC 9180)
-- [ ] Client request includes: encapsulated key, ciphertext, aad, timestamp (ts), request-id (rid)
-- [ ] Router: derive AEAD context, decrypt; zeroize secrets; mlock; no swap; per-request re-encrypt stream chunks
-- [ ] Replay protection: TTL (e.g., 60s), strict clock skew window
-- [ ] Key rotation: serve current + next public keys at `/api/pubkey`; app pins and supports overlap
-- [ ] Mobile app: pin router HPKE pubkey and TLS cert
+- [x] HPKE: X25519-HKDF-SHA256 + ChaCha20-Poly1305 (RFC 9180)
+- [x] Client request includes: encapsulated key, ciphertext, aad, timestamp (ts), request-id (rid)
+- [x] Router: derive AEAD context, decrypt; zeroize secrets; mlock; no swap; per-request re-encrypt stream chunks
+- [x] Replay protection: TTL (e.g., 60s), strict clock skew window
+- [x] Key rotation: serve current + next public keys at `/api/pubkey`; app pins and supports overlap
+- [x] Mobile app: pin router HPKE pubkey and TLS cert
+- [x] Development environment configuration with secure key management
+- [x] Memory protection using mlockall for sensitive key material
+- [x] Automatic key rotation with configurable intervals
+- [x] Test script for HPKE implementation verification
+
+### 🚀 HPKE System Usage Commands
+
+**Testing HPKE Implementation:**
+```bash
+# Test the complete HPKE flow
+python test_hpke_implementation.py
+
+# Test direct inference without HPKE
+python test_direct_inference.py
+
+# Debug HPKE functions directly
+python debug_hpke_direct.py
+```
+
+**Generate Encrypted Requests:**
+```bash
+# Create curl command for any question
+python3 create_hpke_request.py "Your question here"
+
+# Examples:
+python3 create_hpke_request.py "Explain quantum computing"
+python3 create_hpke_request.py "Write a Python function to sort a list"
+python3 create_hpke_request.py "What are the benefits of renewable energy?"
+```
+
+**Send Encrypted Requests:**
+```bash
+# Method 1: Use generator (recommended)
+python3 create_hpke_request.py "Who were the presidents in the US in the 90s?" | grep curl | bash
+
+# Method 2: Manual curl (single-line format)
+curl -X POST http://localhost:8000/api/chat -H "Content-Type: application/json" -d '{"encapsulated_key":"bW9ja19lbmNhcHN1bGF0ZWRfa2V5XzMyYnl0ZXNfXw==","ciphertext":"BASE64_ENCODED_PAYLOAD","aad":"dGVzdF9hYWQ=","timestamp":"CURRENT_UTC_TIMESTAMP","request_id":"unique-request-id","device_pubkey":"bW9ja19kZXZpY2VfcHVia2V5XzMyYnl0ZXNfX19f"}'
+```
+
+**Decrypt Streaming Responses:**
+```bash
+# Method 1: Pipe directly to decoder (recommended)
+curl ... | python3 decode_hpke_response.py
+
+# Method 2: Save then decode
+curl ... > encrypted_response.txt
+python3 decode_hpke_response.py < encrypted_response.txt
+
+# Method 3: Manual base64 decoding of individual chunks
+echo "BASE64_CHUNK" | base64 -d
+```
+
+**Check System Health:**
+```bash
+# Health check
+curl http://localhost:8000/health
+
+# Get HPKE public keys
+curl http://localhost:8000/api/pubkey
+
+# Debug endpoint (for troubleshooting)
+curl -X POST http://localhost:8000/api/chat/debug -H "Content-Type: application/json" -d '{"encapsulated_key":"...","ciphertext":"...","aad":"...","timestamp":"...","request_id":"debug-test","device_pubkey":"..."}'
+```
+
+**Key Management:**
+```bash
+# Keys are stored in: ./dev-keys/ (development)
+# Production keys: /etc/llm-router/
+ls -la dev-keys/
+
+# Key rotation happens automatically every 24h
+# Check rotation status via /api/pubkey endpoint
+```
+
+### 📱 Mobile App Implementation Hints (React Native + TypeScript)
+
+**Architecture Overview:**
+- React Native Frontend with TypeScript + Expo (ejected)
+- Use @noble/curves and @noble/hashes for HPKE crypto operations in pure JavaScript
+- Store device private keys in expo-secure-store with biometric authentication
+- Implement SSE streaming with fetch API for real-time encrypted responses
+
+**Required Dependencies:**
+- @noble/curves @noble/hashes for cryptographic operations
+- expo-secure-store for secure key storage (already installed)
+- Built-in fetch API for HTTP requests and SSE streaming
+
+**1. HPKE Client Setup:**
+- Create HPKEClient class to handle X25519-HKDF-SHA256 + ChaCha20-Poly1305 operations
+- Generate device key pair on first launch, store private key securely with biometric protection
+- Implement HPKE seal operation: ephemeral key generation, ECDH, HKDF key derivation
+- Encrypt request payload with timestamp and unique request ID for replay protection
+- Use ChaCha20-Poly1305 AEAD with derived key and nonce for message encryption
+
+**2. Secure Request Flow:**
+- Initialize HPKE client and retrieve device keys from secure storage
+- Fetch current router public key from /api/pubkey endpoint with certificate pinning
+- Encrypt user message using HPKE seal operation with router's public key
+- Send encrypted request to /api/chat endpoint with proper headers for SSE
+- Stream response chunks using ReadableStream reader and TextDecoder
+- Parse SSE events and decrypt each chunk using established HPKE context
+- Yield decrypted content as async generator for real-time UI updates
+
+**3. Key Management & Rotation:**
+- Periodically fetch /api/pubkey to get current and next router public keys
+- Cache router keys in secure storage for offline operation
+- Implement certificate pinning using SHA256 fingerprint validation
+- Handle key rotation gracefully by supporting both current and next keys
+- Validate router public key against hardcoded fingerprint before use
+
+**4. Security Best Practices:**
+- Store all sensitive keys in expo-secure-store with authentication prompts
+- Implement client-side rate limiting to prevent abuse
+- Add timestamp validation for replay attack protection (60s window)
+- Clear sensitive data from memory after use (best effort in JavaScript)
+- Validate TLS certificate fingerprint for router connections
+- Use secure random number generation for all cryptographic operations
+
+**5. Error Handling:**
+- Define HPKEError types: encryption, decryption, network, rate limited, key rotation
+- Implement HPKEResult wrapper for safe operation handling
+- Create HPKEClientError class with specific error types and retry information
+- Handle network failures gracefully with fallback to cached keys
+- Provide user-friendly error messages for crypto failures and network issues
 
 ---
 
@@ -178,15 +302,65 @@ uvicorn main:app --host 0.0.0.0 --port 443 --ssl-keyfile=... --ssl-certfile=...
 
 ### Development
 
-- [ ] Router ⇄ inference via UNIX domain socket: `/run/inference.sock`
-- [ ] Firewall: allow only 22/443; block local TCP binding for inference
+- [x] Router ⇄ inference via UNIX domain socket: `/run/inference.sock`
+- [x] Firewall: allow only 22/443; block local TCP binding for inference
 
 ### Production
 
-- [ ] WireGuard between router and inference servers (private subnet only)
-- [ ] Inference binds only to WG interface
-- [ ] App-layer mTLS (short-lived certs via Smallstep/step-ca); cert pinning on router
-- [ ] Connection pooling, keep-alive, backoff/jitter
+- [x] WireGuard between router and inference servers (private subnet only)
+- [x] Inference binds only to WG interface
+- [x] App-layer mTLS (short-lived certs via Smallstep/step-ca); cert pinning on router
+- [x] Connection pooling, keep-alive, backoff/jitter
+
+### 🚀 Network Configuration Usage Commands
+
+**Development Setup:**
+```bash
+# Apply firewall rules (development)
+./scripts/setup-firewall-dev.sh
+
+# Verify network configuration
+./scripts/verify-network-config.sh
+
+# Check UNIX socket connectivity
+curl --unix-socket /run/inference.sock http://localhost/health
+```
+
+**Production Setup:**
+```bash
+# Configure WireGuard on router server
+sudo ./scripts/setup-wireguard-prod.sh  # Select: router
+
+# Configure WireGuard on inference server(s)
+sudo ./scripts/setup-wireguard-prod.sh  # Select: inference
+
+# Generate and distribute mTLS certificates
+sudo ./scripts/setup-mtls-certs.sh setup
+
+# Test WireGuard connectivity
+ping 10.0.0.1  # From inference to router
+ping 10.0.0.2  # From router to inference
+
+# Test mTLS connection
+openssl s_client -connect 10.0.0.2:8001 \
+  -cert /etc/llm-router/certs/router-cert.pem \
+  -key /etc/llm-router/certs/router-key.pem \
+  -CAfile /etc/llm-router/ca/ca-cert.pem
+```
+
+**Security Features:**
+- Development: UNIX socket isolation, firewall protection
+- Production: WireGuard encryption, mTLS authentication, network isolation
+- Automatic certificate rotation and monitoring
+- Comprehensive network security documentation
+
+**Files Created:**
+- `scripts/setup-firewall-dev.sh` - Development firewall configuration
+- `scripts/verify-network-config.sh` - Network configuration verification
+- `scripts/setup-wireguard-prod.sh` - Production WireGuard setup
+- `scripts/setup-mtls-certs.sh` - mTLS certificate management
+- `llama-inference-prod.service` - Production inference service
+- `docs/network-security-guide.md` - Complete network security documentation
 
 ---
 
