@@ -131,7 +131,7 @@ class InferenceClient:
                             chunk_data = json.loads(data)
                             if "choices" in chunk_data and chunk_data["choices"]:
                                 delta = chunk_data["choices"][0].get("delta", {})
-                                if "content" in delta:
+                                if "content" in delta and delta["content"] is not None:
                                     yield delta["content"]
                         except json.JSONDecodeError:
                             continue

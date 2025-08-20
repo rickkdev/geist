@@ -44,8 +44,8 @@ class Settings(BaseSettings):
     RATE_LIMIT_ENABLED: bool = True
     
     # HPKE settings
-    ROUTER_HPKE_PRIVATE_KEY_PATH: str = "/etc/llm-router/hpke-private.key"
-    ROUTER_HPKE_PUBLIC_KEY_PATH: str = "/etc/llm-router/hpke-public.key"
+    ROUTER_HPKE_PRIVATE_KEY_PATH: str = "./dev-keys/hpke-private.key"
+    ROUTER_HPKE_PUBLIC_KEY_PATH: str = "./dev-keys/hpke-public.key"
     HPKE_KEY_ROTATION_HOURS: int = 24
     
     # Logging settings
@@ -67,7 +67,7 @@ class Settings(BaseSettings):
     DEV_DEBUG: bool = False
     
     class Config:
-        env_file = ".env"
+        env_file = [".env", ".env.development"]  # Try .env.development if it exists
         env_file_encoding = "utf-8"
         case_sensitive = True
     

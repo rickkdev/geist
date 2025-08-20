@@ -1,4 +1,6 @@
 import logging
+import base64
+import asyncio
 from contextlib import asynccontextmanager
 from typing import Dict, Any
 
@@ -26,14 +28,36 @@ hpke_service = HPKEService(settings)
 rate_limiter = RateLimiter(settings)
 circuit_breaker = CircuitBreaker(settings)
 
+# Background task for key rotation
+async def key_rotation_task():
+    """Background task to periodically check and rotate HPKE keys."""
+    while True:
+        try:
+            if hpke_service.should_rotate_keys():
+                hpke_service.rotate_keys()
+            await asyncio.sleep(3600)  # Check every hour
+        except Exception as e:
+            logging.error(f"Key rotation task error: {e}")
+            await asyncio.sleep(3600)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
     setup_secure_logging()
     await inference_client.startup()
+    
+    # Start key rotation background task
+    key_rotation_task_handle = asyncio.create_task(key_rotation_task())
+    
     yield
+    
     # Shutdown
+    key_rotation_task_handle.cancel()
+    try:
+        await key_rotation_task_handle
+    except asyncio.CancelledError:
+        pass
     await inference_client.shutdown()
 
 
@@ -81,34 +105,34 @@ async def chat_endpoint(request: Request, chat_request: ChatRequest):
     
     try:
         # Decrypt the request using HPKE
+        logging.info(f"Decrypting request {chat_request.request_id}")
         decrypted_payload = hpke_service.decrypt_request(chat_request)
+        logging.info(f"Decrypted payload: {decrypted_payload.messages[0]['content'][:50]}...")
         
         # Create streaming generator
         async def event_stream():
+            chunk_sequence = 0
             try:
+                logging.info(f"Starting streaming for request {chat_request.request_id}")
                 async for chunk in inference_client.stream_chat(decrypted_payload):
                     # Re-encrypt each chunk with HPKE
-                    encrypted_chunk = hpke_service.encrypt_chunk(chunk)
-                    yield {
-                        "event": "chunk",
-                        "data": encrypted_chunk
-                    }
+                    # Note: In production, you'd use the client's public key from request
+                    # For now, we'll use the device pubkey from the request
+                    client_pubkey = base64.b64decode(chat_request.device_pubkey)
+                    encrypted_chunk = hpke_service.encrypt_chunk(chunk, client_pubkey, chunk_sequence)
+                    logging.debug(f"Encrypted chunk {chunk_sequence}: {encrypted_chunk[:100]}...")
+                    yield {"data": encrypted_chunk, "event": "chunk"}
+                    chunk_sequence += 1
                     
                 # Send end event
-                yield {
-                    "event": "end",
-                    "data": ""
-                }
+                yield {"data": "", "event": "end"}
                 
                 circuit_breaker.record_success()
                 
             except Exception as e:
                 circuit_breaker.record_failure()
                 logging.error(f"Stream error: {type(e).__name__}")
-                yield {
-                    "event": "error",
-                    "data": "Internal server error"
-                }
+                yield {"data": "Internal server error", "event": "error"}
         
         return EventSourceResponse(event_stream())
         
@@ -165,6 +189,34 @@ async def health_check():
                 "timestamp": settings.get_current_timestamp().isoformat(),
                 "version": "1.0.0"
             }
+        )
+
+
+@app.post("/api/chat/debug")
+async def chat_debug_endpoint(request: Request, chat_request: ChatRequest):
+    """
+    Debug version of chat endpoint to isolate issues.
+    """
+    try:
+        logging.info(f"DEBUG: Received request {chat_request.request_id}")
+        
+        # Test HPKE decryption
+        decrypted_payload = hpke_service.decrypt_request(chat_request)
+        logging.info(f"DEBUG: Decrypted successfully: {decrypted_payload.messages[0]['content']}")
+        
+        # Return simple response instead of streaming
+        return JSONResponse({
+            "status": "success",
+            "message": "HPKE decryption successful",
+            "decrypted_content": decrypted_payload.messages[0]['content'],
+            "max_tokens": decrypted_payload.max_tokens
+        })
+        
+    except Exception as e:
+        logging.error(f"DEBUG: Error in chat debug: {type(e).__name__}: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": str(e), "type": type(e).__name__}
         )
 
 
