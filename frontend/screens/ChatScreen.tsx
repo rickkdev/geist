@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { SafeAreaView, View, Text } from 'react-native';
-import ChatList from '../../components/ChatList';
-import InputBar from '../../components/InputBar';
-import TypingIndicator from '../../components/TypingIndicator';
+import ChatList from '../components/ChatList';
+import InputBar from '../components/InputBar';
+import TypingIndicator from '../components/TypingIndicator';
 import { useLlama } from '../hooks/useLlama';
 import { useChatHistory } from '../hooks/useChatHistory';
 import { Message } from '../lib/chatStorage';

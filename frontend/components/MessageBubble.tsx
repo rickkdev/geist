@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text } from 'react-native';
-import { Message } from '../frontend/lib/chatStorage';
+import { Message } from '../lib/chatStorage';
 
 interface MessageBubbleProps {
   message: Message;
