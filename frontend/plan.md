@@ -310,7 +310,7 @@ Add a switch to toggle between local on-device inference and secure cloud infere
 
 ### 🔧 Implementation Tasks
 
-- [ ] **Add Settings Screen with Inference Mode Toggle**
+- [x] **Add Settings Screen with Inference Mode Toggle**
   - Create `screens/SettingsScreen.tsx` with NativeWind styling
   - Add toggle switch component for "Local" vs "Cloud" inference
   - Store inference mode preference in AsyncStorage
