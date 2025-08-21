@@ -296,4 +296,119 @@ Support switching between local models with different chat formats and context b
 
 ### Outcome
 
-You’ll be able to switch between LLaMA, DeepSeek, Mistral, and other local models with zero hallucination risk and proper formatting — with extensibility built in.
+You'll be able to switch between LLaMA, DeepSeek, Mistral, and other local models with zero hallucination risk and proper formatting — with extensibility built in.
+
+---
+
+## ✅ Phase 8: Cloud vs Local Inference Toggle + Backend Integration
+
+### 🧠 Goal
+
+Add a switch to toggle between local on-device inference and secure cloud inference via the HPKE-encrypted backend router.
+
+---
+
+### 🔧 Implementation Tasks
+
+- [ ] **Add Settings Screen with Inference Mode Toggle**
+  - Create `screens/SettingsScreen.tsx` with NativeWind styling
+  - Add toggle switch component for "Local" vs "Cloud" inference
+  - Store inference mode preference in AsyncStorage
+  - Add navigation to settings from main chat screen
+
+- [ ] **Implement HPKE Client for Encrypted Communication**
+  - Create `lib/hpkeClient.ts` using @noble/curves and @noble/hashes
+  - Implement X25519-HKDF-SHA256 + ChaCha20-Poly1305 encryption
+  - Generate device key pair and store securely with expo-secure-store
+  - Add HPKE seal/open operations for request/response encryption
+  - Include replay protection with timestamp and request ID validation
+
+- [ ] **Add Backend Router Connection**
+  - Create `lib/cloudInference.ts` for backend router communication
+  - Implement SSE streaming for real-time encrypted responses
+  - Add certificate pinning for router TLS connection security
+  - Configure router endpoint URL and public key retrieval from `/api/pubkey`
+  - Handle key rotation and caching of router public keys
+
+- [ ] **Update Chat Logic for Dual Inference Modes**
+  - Modify `useLlama.ts` hook to support inference mode selection
+  - Add `useCloudInference.ts` hook for encrypted backend communication
+  - Update `ChatScreen.tsx` to use selected inference mode
+  - Maintain consistent streaming interface for both local and cloud
+  - Add loading states and error handling for cloud inference
+
+- [ ] **Add Network and Error Handling**
+  - Implement retry logic with exponential backoff for cloud requests
+  - Handle network failures gracefully with fallback messaging
+  - Add rate limiting awareness and user feedback
+  - Create error boundary for cloud inference failures
+  - Add connection status indicator in chat UI
+
+- [ ] **Security and Key Management**
+  - Generate device key pair automatically on first app launch
+  - Store device private key in expo-secure-store without biometric requirements
+  - Implement client-side request ID generation and replay protection
+  - Add timestamp validation for cloud responses (60s window)
+  - Clear sensitive cryptographic material from memory after use
+  - Validate router certificate fingerprint before connections
+  - All encryption happens transparently without user interaction
+
+### 🧪 Testing and Validation
+
+- [ ] **End-to-End Testing**
+  - Test local inference continues to work unchanged
+  - Verify encrypted cloud inference with backend router
+  - Test toggle switching between modes mid-conversation
+  - Validate HPKE encryption/decryption round-trip
+  - Test network failure scenarios and recovery
+
+- [ ] **Security Testing**
+  - Verify no plaintext prompts sent over network in cloud mode
+  - Test key storage and retrieval from secure store
+  - Validate timestamp and replay protection mechanisms
+  - Test certificate pinning and TLS validation
+  - Ensure sensitive data cleanup after operations
+
+### 📱 UI/UX Requirements
+
+- [ ] **Settings Interface**
+  - Clear toggle between "Local AI" and "Cloud AI" modes
+  - Status indicators showing active inference mode
+  - Connection status for cloud mode (connected/disconnected)
+  - Option to test cloud connection from settings
+
+- [ ] **Chat Experience**
+  - Consistent streaming experience regardless of inference mode
+  - Clear indicators when using cloud vs local inference
+  - Appropriate loading states and error messages
+  - Fallback messaging when cloud inference unavailable
+
+### 🔧 Technical Dependencies
+
+- [ ] **Required Packages**
+  - `@noble/curves` and `@noble/hashes` for HPKE cryptography
+  - `expo-secure-store` for secure key storage (works in ejected Expo apps)
+  - Built-in fetch API for HTTP requests and SSE streaming
+  - Note: Expo modules continue to work after ejection via `expo install`
+
+### 🛡️ Security Considerations
+
+- [ ] **End-to-End Encryption**
+  - All cloud prompts encrypted with HPKE before transmission
+  - Router can only decrypt in-memory, no server-side storage
+  - Response chunks encrypted and streamed back to client
+  - Device private keys never leave secure storage
+  - Encryption happens completely transparently to user
+
+- [ ] **Authentication and Authorization**
+  - Device public key used for router authentication
+  - No API keys or traditional authentication required
+  - Rate limiting based on device public key identity
+  - Certificate pinning for router connection security
+  - No user interaction needed for security features
+
+---
+
+### Outcome
+
+Users will have seamless choice between private on-device inference and secure cloud inference, with the same chat experience and guaranteed end-to-end encryption for cloud mode.

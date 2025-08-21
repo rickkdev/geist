@@ -12,15 +12,15 @@ echo "🚀 Starting LLM Router - Development Mode"
 echo "========================================"
 
 # Check if llama.cpp exists
-if [[ ! -f "llama.cpp/build/bin/llama-server" ]]; then
-    echo "❌ llama.cpp not found at llama.cpp/build/bin/llama-server"
+if [[ ! -f "../inference/llama.cpp/build/bin/llama-server" ]]; then
+    echo "❌ llama.cpp not found at ../inference/llama.cpp/build/bin/llama-server"
     echo "Please build llama.cpp first:"
-    echo "  cd llama.cpp && make"
+    echo "  cd ../inference/llama.cpp && make"
     exit 1
 fi
 
 # Check if model exists
-MODEL_PATH="llama.cpp/models/gpt-oss-20b-Q4_K_S.gguf"
+MODEL_PATH="../inference/llama.cpp/models/gpt-oss-20b-Q4_K_S.gguf"
 if [[ ! -f "$MODEL_PATH" ]]; then
     echo "❌ Model not found: $MODEL_PATH"
     echo "Please download a model file to that location"
@@ -57,7 +57,7 @@ echo "   Model: $MODEL_PATH"
 echo "   Binding to: localhost:8001 (not exposed externally)"
 
 # Start llama.cpp server in background
-llama.cpp/build/bin/llama-server \
+../inference/llama.cpp/build/bin/llama-server \
     -m "$MODEL_PATH" \
     -c 4096 \
     -ngl 0 \

@@ -1,6 +1,10 @@
 # Ignore llama.cpp git repository (it's a submodule/external dependency)
+# Old path for reference:
 backend/llm-router/llama.cpp/.git/
 backend/llm-router/llama.cpp/.git
+
+# New backend structure - exclude entire llama.cpp directory
+backend/inference/llama.cpp/
 
 # Common build artifacts
 *.o
