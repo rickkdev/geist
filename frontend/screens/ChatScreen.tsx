@@ -212,64 +212,84 @@ const ChatScreen: React.FC = () => {
     <SafeAreaView className="flex-1 bg-white">
       {/* Header */}
       <View className="relative border-b border-gray-200 px-4 py-3">
+        {/* Main Header Button - Clickable area that toggles dropdown */}
         <TouchableOpacity
           onPress={() => setShowDropdown(!showDropdown)}
-          className="flex-row items-center"
-        >
-          <Text 
-            className="text-lg font-semibold mr-2"
-            style={{ 
-              color: showDropdown ? 'rgba(0, 0, 0, 0.4)' : 'rgba(0, 0, 0, 1)' 
-            }}
-          >
+          className="flex-row items-center">
+          {/* App Name "Geist" - Black text that dims when dropdown is open */}
+          <Text
+            className="mr-2 text-lg font-semibold"
+            style={{
+              color: showDropdown ? 'rgba(0, 0, 0, 0.4)' : 'rgba(0, 0, 0, 1)',
+            }}>
             Geist
           </Text>
-          <Text 
-            className="text-sm mr-1"
-            style={{ 
-              color: showDropdown ? 'rgba(107, 114, 128, 0.4)' : 'rgba(107, 114, 128, 1)' 
-            }}
-          >
+
+          {/* Current Mode Display - Shows "Local" or "Cloud" in grey */}
+          <Text
+            className="mr-1 text-sm"
+            style={{
+              color: showDropdown ? 'rgba(107, 114, 128, 0.4)' : 'rgba(107, 114, 128, 1)',
+            }}>
             {inferenceMode === 'local' ? 'Local' : 'Cloud'}
           </Text>
-          <Text 
+
+          {/* Dropdown Arrow - Right arrow "›" that rotates down when dropdown opens */}
+          <Text
             className="text-xs"
-            style={{ 
+            style={{
               color: showDropdown ? 'rgba(107, 114, 128, 0.4)' : 'rgba(107, 114, 128, 1)',
-              transform: showDropdown ? 'rotate(90deg)' : 'rotate(0deg)'
-            }}
-          >
+              transform: showDropdown ? 'rotate(90deg)' : 'rotate(0deg)',
+            }}>
             ›
           </Text>
         </TouchableOpacity>
 
-        {/* Dropdown Menu */}
+        {/* Dropdown Menu - Only visible when showDropdown is true */}
         {showDropdown && (
           <>
-            {/* Overlay to close dropdown when clicking elsewhere */}
+            {/* Invisible Overlay - Covers entire screen to detect clicks outside dropdown */}
             <TouchableOpacity
               onPress={() => setShowDropdown(false)}
-              className="absolute inset-0 w-full h-screen"
+              className="absolute inset-0 h-screen w-full"
               style={{ top: 0, left: -16, right: -16, bottom: -1000 }}
             />
-            <View className="absolute top-12 left-4 bg-white border border-gray-200 rounded-lg shadow-lg z-10 min-w-32">
-              <TouchableOpacity
-                onPress={() => handleModeSelect('local')}
-                className="flex-row items-center px-4 py-3 border-b border-gray-100"
-              >
-                <Text className="text-black text-sm mr-2">
-                  {inferenceMode === 'local' ? '✓' : ' '}
-                </Text>
-                <Text className="text-black text-sm">Local</Text>
-              </TouchableOpacity>
+
+            {/* Dropdown Container - White box with shadow containing menu options */}
+            <View className="absolute left-16 top-16 z-10 min-w-48 rounded-lg bg-white">
+              {/* GPT-OSS Title */}
+              <View className="border-b border-gray-100 px-4 py-3">
+                <Text className="text-sm font-medium text-black">GPT-OSS</Text>
+              </View>
+
+              {/* Cloud Mode Option - First menu item with checkmark if selected */}
               <TouchableOpacity
                 onPress={() => handleModeSelect('cloud')}
-                className="flex-row items-center px-4 py-3"
-              >
-                <Text className="text-black text-sm mr-2">
+                className="flex-row items-center border-b border-gray-100 px-4 py-3">
+                {/* Checkmark for Cloud Mode - Shows "✓" if cloud mode is active */}
+                <Text className="mr-2 text-sm text-black">
                   {inferenceMode === 'cloud' ? '✓' : ' '}
                 </Text>
-                <Text className="text-black text-sm">Cloud</Text>
+                <View className="flex-1">
+                  <Text className="text-sm text-black">Cloud</Text>
+                  <Text className="text-xs text-gray-500">
+                    End-to-end encrypted and never stored
+                  </Text>
+                </View>
+              </TouchableOpacity>
+
+              {/* Local Mode Option - Second menu item with checkmark if selected */}
+              <TouchableOpacity
+                onPress={() => handleModeSelect('local')}
+                className="flex-row items-center px-4 py-3 pb-4">
+                {/* Checkmark for Local Mode - Shows "✓" if local mode is active */}
+                <Text className="mr-2 text-sm text-black">
+                  {inferenceMode === 'local' ? '✓' : ' '}
+                </Text>
+                <View className="flex-1">
+                  <Text className="text-sm text-black">Local</Text>
+                  <Text className="pb-4 text-xs text-gray-500">Running on your phone</Text>
+                </View>
               </TouchableOpacity>
             </View>
           </>
