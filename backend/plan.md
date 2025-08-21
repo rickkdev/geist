@@ -435,16 +435,19 @@ Body:
 ## ⚙️ 10. Configuration Management
 
 - [x] Settings:
+
   - [x] Complete Pydantic settings class with all configuration options
   - [x] Environment-based configuration with validation
   - [x] Helper methods for environment checks and transport configuration
   - [x] Security settings with production hardening
 
 - [x] `.env.development` and `.env.production`:
+
   - [x] Development: UNIX socket transport, verbose logging, relaxed limits
   - [x] Production: HTTPS/WireGuard transport, mTLS, strict security
 
 - [x] Deployment scripts for env switching:
+
   - [x] `deploy-dev.sh`: Development environment setup
   - [x] `deploy-prod.sh`: Production environment setup with security hardening
   - [x] `switch-env.sh`: Easy environment switching with status checking
@@ -502,12 +505,14 @@ systemctl status llama-inference    # Development service
 ## 🔒 11. Isolation & No Data Persistence
 
 - [x] **User & Process Isolation**:
+
   - [x] Dedicated system users: `llm-router` and `inference` with `/usr/sbin/nologin`
   - [x] Proper group memberships for socket access
   - [x] Secure directory structure with minimal permissions
   - [x] Sudoers restrictions for emergency access only
 
 - [x] **Comprehensive Systemd Sandboxing** (`systemd/llm-router-hardened.service`, `systemd/llama-inference-hardened.service`):
+
   - [x] `NoNewPrivileges=yes` - Prevent privilege escalation
   - [x] `PrivateTmp=yes` - Isolated temporary directories
   - [x] `ProtectHome=read-only` - Home directory protection
@@ -522,6 +527,7 @@ systemctl status llama-inference    # Development service
   - [x] Network isolation and resource limits
 
 - [x] **Memory Security** (`scripts/setup-memory-security.sh`):
+
   - [x] Swap completely disabled: `swapoff -a` + fstab cleanup
   - [x] Kernel hardening: `vm.swappiness=0`, `fs.suid_dumpable=0`
   - [x] ASLR enabled: `kernel.randomize_va_space=2`
@@ -530,6 +536,7 @@ systemctl status llama-inference    # Development service
   - [x] Kernel information restrictions
 
 - [x] **Data Persistence Prevention** (`middleware/secure_logging.py`, `scripts/setup-log-security.sh`):
+
   - [x] Comprehensive log scrubbing with regex patterns for sensitive data
   - [x] HPKE data, API keys, message content, IPs all scrubbed
   - [x] Secure log rotation (3-day retention) with automatic shredding
@@ -567,7 +574,7 @@ sudo ./scripts/setup-log-security.sh       # Secure logging
 # Check memory security
 sudo /usr/local/bin/validate-memory-security.sh
 
-# Check user/permission security  
+# Check user/permission security
 sudo /usr/local/bin/check-llm-security.sh
 
 # Monitor security events
@@ -592,6 +599,7 @@ journalctl -u llm-router-hardened -f
 ```
 
 **Security Features Implemented:**
+
 - **Zero Data Persistence**: No prompts/responses logged, aggressive log cleanup
 - **Memory Protection**: Swap disabled, kernel hardened, sensitive data mlocked
 - **Process Isolation**: Dedicated users, comprehensive systemd sandboxing
@@ -604,6 +612,7 @@ journalctl -u llm-router-hardened -f
 ## 🧪 12. Testing Pipeline
 
 - [x] **Unit tests** (`tests/test_hpke_unit.py`):
+
   - [x] HPKE round-trip encryption/decryption testing
   - [x] Replay protection mechanisms (timestamp validation, request ID tracking)
   - [x] Key rotation handling and validation
@@ -614,6 +623,7 @@ journalctl -u llm-router-hardened -f
   - [x] Security logging validation
 
 - [x] **Integration tests** (`tests/test_integration_e2e.py`):
+
   - [x] Complete mobile-side HPKE → router → inference flow
   - [x] Server-Sent Events (SSE) streaming with HPKE encryption
   - [x] Circuit breaker and retry behavior testing
@@ -624,6 +634,7 @@ journalctl -u llm-router-hardened -f
   - [x] Timeout and network error handling
 
 - [x] **Load tests** (`tests/load/`):
+
   - [x] k6 load testing script with multiple scenarios
   - [x] Locust load testing with realistic user behavior simulation
   - [x] Performance metrics: p50/p95 latency, tokens/sec, concurrency
@@ -632,6 +643,7 @@ journalctl -u llm-router-hardened -f
   - [x] Rate limiting and circuit breaker validation under load
 
 - [x] **Test infrastructure** (`tests/`):
+
   - [x] Comprehensive pytest configuration (`conftest.py`, `pytest.ini`)
   - [x] Test utilities and helper functions
   - [x] Mock fixtures for dependencies
@@ -640,6 +652,7 @@ journalctl -u llm-router-hardened -f
   - [x] Test data generators
 
 - [x] **Test automation** (`Makefile`, `tests/run_tests.py`):
+
   - [x] Unified test runner with multiple test categories
   - [x] Code quality checks (ruff linting, mypy type checking)
   - [x] Coverage reporting with HTML output
@@ -652,6 +665,7 @@ journalctl -u llm-router-hardened -f
 ### 🚀 Testing Pipeline Usage Commands
 
 **Quick Development Testing:**
+
 ```bash
 # Fast feedback loop for development
 make quick                    # Lint + unit tests
@@ -665,6 +679,7 @@ make test-load              # Load tests with k6 (requires running server)
 ```
 
 **Comprehensive Testing:**
+
 ```bash
 # Complete test suite
 make test-all               # All tests with full reporting
@@ -681,6 +696,7 @@ make test-load-spike        # Spike testing with sudden load increases
 ```
 
 **Load Testing:**
+
 ```bash
 # Different load testing tools and scenarios
 make test-load              # Basic k6 smoke test
@@ -693,23 +709,26 @@ make test-load-comprehensive # Full load test suite
 ```
 
 **CI/CD Simulation:**
+
 ```bash
 # Simulate complete CI/CD pipeline
 make ci-test                # Full pipeline: deps → quality → all tests
 
 # Individual quality checks
 make lint                   # Code linting with ruff
-make type-check            # Type checking with mypy  
+make type-check            # Type checking with mypy
 make format                # Code formatting
 ```
 
 **Test Results and Reports:**
+
 - Unit test coverage: `tests/coverage/index.html`
 - Load test results: `tests/load/results/`
 - Pytest reports: Terminal output with detailed failure information
 - Performance benchmarks: Automated timing and memory usage analysis
 
 **Test Features Implemented:**
+
 - **Security Testing**: HPKE encryption validation, replay protection, input sanitization
 - **Performance Testing**: Response time measurement, throughput analysis, concurrent load handling
 - **Reliability Testing**: Circuit breaker validation, retry mechanism testing, error recovery
@@ -776,3 +795,125 @@ make format                # Code formatting
 - [ ] Optional PoW (Hashcash-like) under attack
 - [ ] Max token and concurrency guards
 - [ ] Basic input/output token accounting (no content logging)
+
+---
+
+## Kubernetes thoughts
+
+Looking at your production architecture only vs
+Kubernetes:
+
+What Wouldn't Work Well with K8s
+
+Direct WireGuard Networking
+
+- Your plan: Direct WireGuard tunnels between router +
+  inference servers
+- K8s problem: Adds overlay networking (CNI) on top of
+  WireGuard
+- Result: Router → CNI → WireGuard → CNI → Inference
+  (extra hops, complexity)
+
+mTLS Certificate Management
+
+- Your plan: Simple step-ca with short-lived certs,
+  direct cert pinning
+- K8s problem: Would need cert-manager + your step-ca =
+  dual cert systems
+- Result: More complex certificate rotation, additional
+  failure points
+
+Dedicated Security Users
+
+- Your plan: llm-router and inference users with specific
+  permissions
+- K8s problem: Containers run as numeric UIDs, not your
+  hardened user accounts
+- Result: Lose your specific user/group security model
+
+systemd Security Hardening
+
+- Your plan: Comprehensive systemd sandboxing
+  (ProtectSystem=strict, etc.)
+- K8s problem: Container security contexts are different
+  from systemd features
+- Result: Need to recreate security controls using Pod
+  Security Standards
+
+Memory Security Controls
+
+- Your plan: mlockall() for HPKE keys, swap disabled,
+  kernel hardening
+- K8s problem: Less direct control over host memory
+  management from containers
+- Result: More complex memory security implementation
+
+What K8s Would Add (Overhead)
+
+- etcd cluster management
+- API server security
+- Container image vulnerabilities
+- More network components to secure
+- Service mesh complexity for mTLS
+
+Your production setup is already distributed and secure.
+K8s would add abstraction layers without significant
+benefits for your specific privacy-focused use case.
+
+Zero Data Persistence Requirements
+
+Secure Log Scrubbing (lines 532-539)
+
+- Your comprehensive regex patterns for scrubbing HPKE
+  data, API keys, message content
+- K8s problem: Container logs go through multiple layers
+  (container runtime, kubelet, log drivers)
+- Result: Much harder to guarantee complete data
+  scrubbing across all log paths
+
+Swap Completely Disabled (line 525)
+
+- Your swapoff -a + fstab cleanup approach
+- K8s problem: Node-level swap disabling conflicts with
+  K8s memory management
+- Result: K8s expects swap to be disabled anyway, but
+  containers add memory complexity
+
+Performance-Critical llama.cpp Optimizations
+
+Direct Hardware Control (lines 98-109)
+
+- Your custom make compilation with specific CPU flags
+  for llama.cpp
+- K8s problem: Container builds are less optimized,
+  runtime overhead
+- Result: Performance degradation for CPU-intensive
+  inference
+
+Model Loading & Memory Management (line 528)
+
+- Your 16GB memory locking limits for models
+- K8s problem: Container memory limits work differently
+  than direct mlockall()
+- Result: Less predictable model loading performance
+
+Custom Systemd Dependency Ordering
+
+Service Dependencies (line 727)
+
+- Your After=wireguard-wg0.service for inference servers
+- K8s problem: Pod startup dependencies are handled
+  differently (init containers, readiness probes)
+- Result: More complex service orchestration
+
+Direct Certificate Pinning
+
+Mobile App Certificate Pinning (lines 175, 297)
+
+- Your hardcoded TLS cert fingerprint validation
+- K8s problem: Ingress controllers/load balancers add
+  certificate complexity
+- Result: More certificate layers to pin and validate
+
+Your architecture is designed for maximum control and
+minimal abstraction - exactly what K8s adds layers to.
