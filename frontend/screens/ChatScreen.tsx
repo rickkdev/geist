@@ -256,24 +256,24 @@ const ChatScreen: React.FC = () => {
             />
 
             {/* Dropdown Container - White box with shadow containing menu options */}
-            <View className="absolute left-16 top-16 z-10 min-w-48 rounded-lg bg-white">
+            <View className="absolute left-16 top-16 z-10 w-60 rounded-lg bg-white shadow-lg">
               {/* GPT-OSS Title */}
               <View className="border-b border-gray-100 px-4 py-3">
-                <Text className="text-sm font-medium text-black">GPT-OSS</Text>
+                <Text className="text-base font-medium text-black">GPT-OSS</Text>
               </View>
 
               {/* Cloud Mode Option - First menu item with checkmark if selected */}
               <TouchableOpacity
                 onPress={() => handleModeSelect('cloud')}
-                className="flex-row items-center border-b border-gray-100 px-4 py-3">
+                className="flex-row items-start border-b border-gray-100 px-4 py-3">
                 {/* Checkmark for Cloud Mode - Shows "✓" if cloud mode is active */}
-                <Text className="mr-2 text-sm text-black">
+                <Text className="mr-2 pt-0.5 text-base text-black">
                   {inferenceMode === 'cloud' ? '✓' : ' '}
                 </Text>
                 <View className="flex-1">
-                  <Text className="text-sm text-black">Cloud</Text>
-                  <Text className="text-xs text-gray-500">
-                    End-to-end encrypted and never stored
+                  <Text className="text-base text-black">Cloud</Text>
+                  <Text className="text-sm text-gray-500">
+                    End-to-end encrypted and never stored, high quality.
                   </Text>
                 </View>
               </TouchableOpacity>
@@ -281,14 +281,16 @@ const ChatScreen: React.FC = () => {
               {/* Local Mode Option - Second menu item with checkmark if selected */}
               <TouchableOpacity
                 onPress={() => handleModeSelect('local')}
-                className="flex-row items-center px-4 py-3 pb-4">
+                className="flex-row items-start px-4 pb-4 pt-3">
                 {/* Checkmark for Local Mode - Shows "✓" if local mode is active */}
-                <Text className="mr-2 text-sm text-black">
+                <Text className="mr-2 pt-0.5 text-base text-black">
                   {inferenceMode === 'local' ? '✓' : ' '}
                 </Text>
                 <View className="flex-1">
-                  <Text className="text-sm text-black">Local</Text>
-                  <Text className="pb-4 text-xs text-gray-500">Running on your phone</Text>
+                  <Text className="text-base text-black">Local</Text>
+                  <Text className="text-sm text-gray-500">
+                    LLM hosted on your phone, overall lower quality.
+                  </Text>
                 </View>
               </TouchableOpacity>
             </View>
