@@ -267,9 +267,11 @@ const ChatScreen: React.FC = () => {
                 onPress={() => handleModeSelect('cloud')}
                 className="flex-row items-start border-b border-gray-100 px-4 py-3">
                 {/* Checkmark for Cloud Mode - Shows "✓" if cloud mode is active */}
-                <Text className="mr-2 pt-0.5 text-base text-black">
-                  {inferenceMode === 'cloud' ? '✓' : ' '}
-                </Text>
+                <View className="mr-2 w-4 items-center pt-0.5">
+                  <Text className="text-base text-black">
+                    {inferenceMode === 'cloud' ? '✓' : ''}
+                  </Text>
+                </View>
                 <View className="flex-1">
                   <Text className="text-base text-black">Cloud</Text>
                   <Text className="text-sm text-gray-500">
@@ -283,9 +285,11 @@ const ChatScreen: React.FC = () => {
                 onPress={() => handleModeSelect('local')}
                 className="flex-row items-start px-4 pb-4 pt-3">
                 {/* Checkmark for Local Mode - Shows "✓" if local mode is active */}
-                <Text className="mr-2 pt-0.5 text-base text-black">
-                  {inferenceMode === 'local' ? '✓' : ' '}
-                </Text>
+                <View className="mr-2 w-4 items-center pt-0.5">
+                  <Text className="text-base text-black">
+                    {inferenceMode === 'local' ? '✓' : ''}
+                  </Text>
+                </View>
                 <View className="flex-1">
                   <Text className="text-base text-black">Local</Text>
                   <Text className="text-sm text-gray-500">
