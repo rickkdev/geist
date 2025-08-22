@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { SafeAreaView, View, Text, TouchableOpacity, Switch, Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useCloudInference } from '../hooks/useCloudInference';
 
 type InferenceMode = 'local' | 'cloud';
 
@@ -11,6 +12,8 @@ interface SettingsScreenProps {
 const SettingsScreen: React.FC<SettingsScreenProps> = ({ onBack }) => {
   const [inferenceMode, setInferenceMode] = useState<InferenceMode>('local');
   const [loading, setLoading] = useState(true);
+  const [testingConnection, setTestingConnection] = useState(false);
+  const { testConnection, isConnected, error: cloudError } = useCloudInference({ autoInitialize: false });
 
   useEffect(() => {
     loadInferenceMode();
@@ -60,6 +63,30 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ onBack }) => {
       );
     } else {
       saveInferenceMode(newMode);
+    }
+  };
+
+  const handleTestConnection = async () => {
+    setTestingConnection(true);
+    
+    try {
+      const success = await testConnection();
+      
+      Alert.alert(
+        'Connection Test',
+        success 
+          ? '✅ Successfully connected to cloud inference server' 
+          : `❌ Failed to connect: ${cloudError || 'Unknown error'}`,
+        [{ text: 'OK' }]
+      );
+    } catch (error) {
+      Alert.alert(
+        'Connection Test',
+        `❌ Connection test failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        [{ text: 'OK' }]
+      );
+    } finally {
+      setTestingConnection(false);
     }
   };
 
@@ -146,13 +173,26 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ onBack }) => {
 
         {/* Connection Status (for cloud mode) */}
         {inferenceMode === 'cloud' && (
-          <View className="bg-green-50 rounded-lg p-4">
-            <Text className="text-sm font-medium text-green-900 mb-1">Connection Status</Text>
-            <Text className="text-sm text-green-700">
-              ✅ Ready for secure cloud inference
+          <View className={`rounded-lg p-4 ${isConnected ? 'bg-green-50' : cloudError ? 'bg-red-50' : 'bg-yellow-50'}`}>
+            <Text className={`text-sm font-medium mb-1 ${isConnected ? 'text-green-900' : cloudError ? 'text-red-900' : 'text-yellow-900'}`}>
+              Connection Status
             </Text>
-            <TouchableOpacity className="mt-2">
-              <Text className="text-xs text-green-600 underline">Test connection</Text>
+            <Text className={`text-sm ${isConnected ? 'text-green-700' : cloudError ? 'text-red-700' : 'text-yellow-700'}`}>
+              {isConnected ? '✅ Connected to secure cloud inference' : 
+               cloudError ? '❌ Connection error' :
+               '⏳ Ready for secure cloud inference'}
+            </Text>
+            {cloudError && (
+              <Text className="text-xs text-red-600 mt-1">{cloudError}</Text>
+            )}
+            <TouchableOpacity 
+              className="mt-2" 
+              onPress={handleTestConnection}
+              disabled={testingConnection}
+            >
+              <Text className={`text-xs underline ${isConnected ? 'text-green-600' : cloudError ? 'text-red-600' : 'text-yellow-600'}`}>
+                {testingConnection ? 'Testing...' : 'Test connection'}
+              </Text>
             </TouchableOpacity>
           </View>
         )}

@@ -104,7 +104,10 @@ class HPKEService:
             return DecryptedChatPayload(**plaintext_data)
 
         except Exception as e:
-            logging.error(f"HPKE decryption failed: {type(e).__name__}")
+            logging.error(f"HPKE decryption failed: {type(e).__name__}: {str(e)}")
+            if hasattr(e, 'errors'):
+                logging.error(f"Validation errors: {e.errors()}")
+            logging.error(f"Raw decrypted data: {plaintext_data}")
             raise ValueError("Decryption failed")
 
     def encrypt_chunk(

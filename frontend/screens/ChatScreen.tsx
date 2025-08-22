@@ -5,6 +5,7 @@ import InputBar from '../components/InputBar';
 import TypingIndicator from '../components/TypingIndicator';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useLlama } from '../hooks/useLlama';
+import { useCloudInference } from '../hooks/useCloudInference';
 import { useChatHistory } from '../hooks/useChatHistory';
 import { Message } from '../lib/chatStorage';
 
@@ -13,6 +14,17 @@ type InferenceMode = 'local' | 'cloud';
 const ChatScreen: React.FC = () => {
   const { messages, addMessage, logChatHistoryForLLM } = useChatHistory();
   const { isReady, loading, error, downloadProgress, ask } = useLlama();
+  const { 
+    isInitialized: cloudInitialized, 
+    isConnected: cloudConnected, 
+    isLoading: cloudLoading,
+    isGenerating: cloudGenerating,
+    error: cloudError,
+    ask: askCloud,
+    testConnection,
+    clearError: clearCloudError,
+    initialize: initializeCloud
+  } = useCloudInference({ autoInitialize: false });
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [streamingMessage, setStreamingMessage] = useState('');
@@ -22,6 +34,15 @@ const ChatScreen: React.FC = () => {
   useEffect(() => {
     loadInferenceMode();
   }, []);
+
+  // Initialize cloud inference when mode changes to cloud
+  useEffect(() => {
+    if (inferenceMode === 'cloud' && !cloudInitialized && !cloudLoading) {
+      initializeCloud().catch(error => {
+        console.error('Auto-initialization failed:', error);
+      });
+    }
+  }, [inferenceMode, cloudInitialized, cloudLoading, initializeCloud]);
 
   const loadInferenceMode = async () => {
     try {
@@ -63,13 +84,36 @@ const ChatScreen: React.FC = () => {
           { text: 'Enable', onPress: () => saveInferenceMode(mode) },
         ]
       );
+    } else if (mode === 'local') {
+      Alert.alert(
+        'Switch to Local AI',
+        'Local inference uses the AI model running directly on your device. This provides privacy but with lower quality responses.',
+        [
+          { text: 'Cancel', style: 'cancel', onPress: () => setShowDropdown(false) },
+          { text: 'Switch', onPress: () => saveInferenceMode(mode) },
+        ]
+      );
     } else {
       saveInferenceMode(mode);
     }
   };
 
   const handleSend = async () => {
-    if (!input.trim() || !isReady) return;
+    // Initialize cloud inference if needed
+    if (inferenceMode === 'cloud' && !cloudInitialized && !cloudLoading) {
+      try {
+        await initializeCloud();
+      } catch (error) {
+        console.error('Failed to initialize cloud inference:', error);
+        return;
+      }
+    }
+    
+    // Check readiness based on inference mode
+    const isInferenceReady = inferenceMode === 'local' ? isReady : cloudInitialized;
+    const isCurrentlyGenerating = inferenceMode === 'local' ? isTyping : cloudGenerating;
+    
+    if (!input.trim() || !isInferenceReady || isCurrentlyGenerating) return;
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -82,6 +126,11 @@ const ChatScreen: React.FC = () => {
     setIsTyping(true);
     setStreamingMessage('');
 
+    // Clear any previous cloud errors
+    if (cloudError) {
+      clearCloudError();
+    }
+
     try {
       const assistantId = (Date.now() + 1).toString();
       let fullResponse = '';
@@ -89,13 +138,31 @@ const ChatScreen: React.FC = () => {
       // Pass the entire conversation history including the new user message
       const conversationHistory = [...messages, userMessage];
 
-      console.log('🎯 CHAT HANDLER: Starting LLM request');
+      console.log('🎯 CHAT HANDLER: Starting', inferenceMode, 'LLM request');
       console.log('📊 Conversation length:', conversationHistory.length, 'messages');
 
-      const replyText = await ask(conversationHistory, (token: string) => {
-        fullResponse += token;
-        setStreamingMessage(fullResponse);
-      });
+      let replyText: string | undefined;
+      
+      if (inferenceMode === 'cloud') {
+        // Use cloud inference
+        const cloudMessages = conversationHistory.map(msg => ({
+          role: msg.role as 'user' | 'assistant' | 'system',
+          content: msg.text
+        }));
+        
+        await askCloud(cloudMessages, (token: string) => {
+          fullResponse += token;
+          setStreamingMessage(fullResponse);
+        });
+        
+        replyText = fullResponse;
+      } else {
+        // Use local inference
+        replyText = await ask(conversationHistory, (token: string) => {
+          fullResponse += token;
+          setStreamingMessage(fullResponse);
+        });
+      }
 
       const assistantMessage: Message = {
         id: assistantId,
@@ -111,44 +178,58 @@ const ChatScreen: React.FC = () => {
       // Log the entire chat history after each message exchange
       logChatHistoryForLLM();
     } catch (err) {
-      console.error('💥 CHAT HANDLER: LLM request failed:', err);
+      console.error('💥 CHAT HANDLER:', inferenceMode, 'LLM request failed:', err);
 
-      // Check if we have any partial response from global state
-      const partialResponse = (global as any).__LLAMA_LAST_PARTIAL_RESPONSE;
-      const lastError = (global as any).__LLAMA_LAST_ERROR;
+      let errorText = `Sorry, I encountered an error processing your message${inferenceMode === 'cloud' ? ' (cloud inference)' : ' (local inference)'}.`;
+      
+      // Handle cloud inference errors differently
+      if (inferenceMode === 'cloud') {
+        if (cloudError) {
+          errorText = `Cloud inference error: ${cloudError}`;
+        } else if (err instanceof Error) {
+          errorText = `Cloud inference failed: ${err.message}`;
+        }
+        
+        // If we have streaming message, preserve it
+        if (streamingMessage && streamingMessage.trim()) {
+          errorText = streamingMessage.trim() + '\n\n[Response was interrupted by a cloud error]';
+        }
+      } else {
+        // Handle local inference errors (existing logic)
+        const partialResponse = (global as any).__LLAMA_LAST_PARTIAL_RESPONSE;
+        const lastError = (global as any).__LLAMA_LAST_ERROR;
 
-      let errorText = 'Sorry, I encountered an error processing your message.';
+        // If we have a partial response from timeout, use it
+        if (
+          partialResponse &&
+          partialResponse.partialResponse &&
+          partialResponse.partialResponse.trim()
+        ) {
+          console.log('🔄 CHAT HANDLER: Found partial response from timeout, using it');
+          console.log('Partial response length:', partialResponse.partialResponse.length);
+          errorText =
+            partialResponse.partialResponse.trim() + '\n\n[Response was cut short due to timeout]';
 
-      // If we have a partial response from timeout, use it
-      if (
-        partialResponse &&
-        partialResponse.partialResponse &&
-        partialResponse.partialResponse.trim()
-      ) {
-        console.log('🔄 CHAT HANDLER: Found partial response from timeout, using it');
-        console.log('Partial response length:', partialResponse.partialResponse.length);
-        errorText =
-          partialResponse.partialResponse.trim() + '\n\n[Response was cut short due to timeout]';
+          // Store the partial response globally for developer inspection
+          (global as any).__CHAT_LAST_PARTIAL = {
+            userMessage: userMessage.text,
+            partialResponse: partialResponse.partialResponse,
+            timestamp: new Date().toISOString(),
+            reason: 'timeout',
+          };
+        } else if (lastError && lastError.partialResponse && lastError.partialResponse.trim()) {
+          console.log('🔄 CHAT HANDLER: Found partial response from error, using it');
+          errorText = lastError.partialResponse.trim() + '\n\n[Response was interrupted by an error]';
 
-        // Store the partial response globally for developer inspection
-        (global as any).__CHAT_LAST_PARTIAL = {
-          userMessage: userMessage.text,
-          partialResponse: partialResponse.partialResponse,
-          timestamp: new Date().toISOString(),
-          reason: 'timeout',
-        };
-      } else if (lastError && lastError.partialResponse && lastError.partialResponse.trim()) {
-        console.log('🔄 CHAT HANDLER: Found partial response from error, using it');
-        errorText = lastError.partialResponse.trim() + '\n\n[Response was interrupted by an error]';
-
-        // Store the partial response globally for developer inspection
-        (global as any).__CHAT_LAST_PARTIAL = {
-          userMessage: userMessage.text,
-          partialResponse: lastError.partialResponse,
-          error: lastError.error,
-          timestamp: new Date().toISOString(),
-          reason: 'error',
-        };
+          // Store the partial response globally for developer inspection
+          (global as any).__CHAT_LAST_PARTIAL = {
+            userMessage: userMessage.text,
+            partialResponse: lastError.partialResponse,
+            error: lastError.error,
+            timestamp: new Date().toISOString(),
+            reason: 'error',
+          };
+        }
       }
 
       const errorMessage: Message = {
@@ -164,6 +245,7 @@ const ChatScreen: React.FC = () => {
       (global as any).__CHAT_LAST_ERROR = {
         userMessage: userMessage.text,
         error: err,
+        inferenceMode,
         timestamp: new Date().toISOString(),
         conversationLength: [...messages, userMessage].length,
       };
@@ -172,12 +254,18 @@ const ChatScreen: React.FC = () => {
     }
   };
 
-  if (loading) {
+  // Show loading state based on inference mode
+  const isCurrentlyLoading = inferenceMode === 'local' ? loading : cloudLoading;
+  const currentError = inferenceMode === 'local' ? error : cloudError;
+  
+  if (isCurrentlyLoading || (inferenceMode === 'local' && loading)) {
     return (
       <SafeAreaView className="flex-1 bg-white">
         <View className="flex-1 items-center justify-center p-5">
           <Text className="text-center text-base text-gray-600">
-            {downloadProgress > 0 && downloadProgress < 100
+            {inferenceMode === 'cloud' && cloudLoading
+              ? 'Initializing secure cloud connection...'
+              : downloadProgress > 0 && downloadProgress < 100
               ? `Downloading model... ${Math.round(downloadProgress)}%`
               : 'Initializing AI model...'}
           </Text>
@@ -186,11 +274,11 @@ const ChatScreen: React.FC = () => {
     );
   }
 
-  if (error) {
+  if (currentError && inferenceMode === 'local') {
     return (
       <SafeAreaView className="flex-1 bg-white">
         <View className="flex-1 items-center justify-center p-5">
-          <Text className="mb-2 text-center text-base text-red-500">Error: {error}</Text>
+          <Text className="mb-2 text-center text-base text-red-500">Error: {currentError}</Text>
           <Text className="text-center text-sm text-gray-600">Please check your model setup</Text>
         </View>
       </SafeAreaView>
@@ -310,7 +398,7 @@ const ChatScreen: React.FC = () => {
         value={input}
         onChangeText={setInput}
         onSend={handleSend}
-        disabled={!isReady || isTyping}
+        disabled={(inferenceMode === 'local' ? !isReady : false) || isTyping || cloudGenerating}
       />
     </SafeAreaView>
   );

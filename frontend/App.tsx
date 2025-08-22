@@ -1,3 +1,6 @@
+// Import crypto polyfill first
+import 'react-native-get-random-values';
+
 import React from 'react';
 import ChatScreen from './screens/ChatScreen';
 import './global.css';

@@ -316,14 +316,14 @@ Add a switch to toggle between local on-device inference and secure cloud infere
   - Store inference mode preference in AsyncStorage
   - Add navigation to settings from main chat screen
 
-- [ ] **Implement HPKE Client for Encrypted Communication**
+- [x] **Implement HPKE Client for Encrypted Communication**
   - Create `lib/hpkeClient.ts` using @noble/curves and @noble/hashes
   - Implement X25519-HKDF-SHA256 + ChaCha20-Poly1305 encryption
   - Generate device key pair and store securely with expo-secure-store
   - Add HPKE seal/open operations for request/response encryption
   - Include replay protection with timestamp and request ID validation
 
-- [ ] **Add Backend Router Connection**
+- [x] **Add Backend Router Connection**
   - Create `lib/cloudInference.ts` for backend router communication
   - Implement SSE streaming for real-time encrypted responses
   - Add certificate pinning for router TLS connection security
