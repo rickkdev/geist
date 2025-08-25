@@ -17,7 +17,10 @@ export interface CloudInferenceState {
   isLoading: boolean;
   isGenerating: boolean;
   error: string | null;
-  connectionStatus: 'disconnected' | 'connecting' | 'connected' | 'error';
+  connectionStatus: 'disconnected' | 'connecting' | 'connected' | 'error' | 'rate_limited';
+  isRetrying: boolean;
+  retryAttempt: number;
+  rateLimitedUntil: number | null;
 }
 
 export interface UseCloudInferenceResult extends CloudInferenceState {
@@ -40,7 +43,10 @@ export function useCloudInference(options: UseCloudInferenceOptions = {}): UseCl
     isLoading: false,
     isGenerating: false,
     error: null,
-    connectionStatus: 'disconnected'
+    connectionStatus: 'disconnected',
+    isRetrying: false,
+    retryAttempt: 0,
+    rateLimitedUntil: null
   });
 
   const clientRef = useRef<CloudInferenceClient | null>(null);
@@ -139,7 +145,9 @@ export function useCloudInference(options: UseCloudInferenceOptions = {}): UseCl
 
     updateState({ 
       isGenerating: true, 
-      error: null 
+      error: null,
+      isRetrying: false,
+      retryAttempt: 0 
     });
 
     try {
@@ -161,24 +169,35 @@ export function useCloudInference(options: UseCloudInferenceOptions = {}): UseCl
       updateState({ 
         isGenerating: false,
         isConnected: true,
-        connectionStatus: 'connected'
+        connectionStatus: 'connected',
+        isRetrying: false,
+        retryAttempt: 0,
+        rateLimitedUntil: null
       });
     } catch (error) {
       console.error('Cloud inference error:', error);
       
       let errorMessage = 'Unknown error occurred';
-      let shouldRetry = false;
+      let connectionStatus: CloudInferenceState['connectionStatus'] = 'error';
+      let rateLimitedUntil: number | null = null;
       
       if (error instanceof CloudInferenceError) {
         errorMessage = error.message;
-        shouldRetry = error.retryable;
         
         // Update connection status based on error type
-        if (error.code === 'NETWORK_ERROR' || error.code === 'REQUEST_FAILED') {
-          updateState({ 
-            connectionStatus: 'error',
-            isConnected: false 
-          });
+        if (error.code === 'NETWORK_ERROR') {
+          connectionStatus = 'error';
+        } else if (error.code === 'RATE_LIMITED') {
+          connectionStatus = 'rate_limited';
+          // Extract rate limit duration if available
+          const rateLimitMatch = error.message.match(/retry after (\d+)/);
+          if (rateLimitMatch) {
+            rateLimitedUntil = Date.now() + parseInt(rateLimitMatch[1]) * 1000;
+          } else {
+            rateLimitedUntil = Date.now() + 60000; // Default 1 minute
+          }
+        } else if (error.code === 'REQUEST_FAILED') {
+          connectionStatus = 'error';
         }
       } else if (error instanceof Error) {
         errorMessage = error.message;
@@ -186,7 +205,11 @@ export function useCloudInference(options: UseCloudInferenceOptions = {}): UseCl
 
       updateState({ 
         isGenerating: false,
-        error: errorMessage
+        error: errorMessage,
+        connectionStatus,
+        isConnected: false,
+        isRetrying: false,
+        rateLimitedUntil
       });
 
       throw error;

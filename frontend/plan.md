@@ -330,14 +330,14 @@ Add a switch to toggle between local on-device inference and secure cloud infere
   - Configure router endpoint URL and public key retrieval from `/api/pubkey`
   - Handle key rotation and caching of router public keys
 
-- [ ] **Update Chat Logic for Dual Inference Modes**
+- [x] **Update Chat Logic for Dual Inference Modes**
   - Modify `useLlama.ts` hook to support inference mode selection
   - Add `useCloudInference.ts` hook for encrypted backend communication
   - Update `ChatScreen.tsx` to use selected inference mode
   - Maintain consistent streaming interface for both local and cloud
   - Add loading states and error handling for cloud inference
 
-- [ ] **Add Network and Error Handling**
+- [x] **Add Network and Error Handling**
   - Implement retry logic with exponential backoff for cloud requests
   - Handle network failures gracefully with fallback messaging
   - Add rate limiting awareness and user feedback
@@ -352,6 +352,8 @@ Add a switch to toggle between local on-device inference and secure cloud infere
   - Clear sensitive cryptographic material from memory after use
   - Validate router certificate fingerprint before connections
   - All encryption happens transparently without user interaction
+
+  - [ ] **Fix timeout and error for local model**
 
 ### 🧪 Testing and Validation
 
@@ -370,12 +372,6 @@ Add a switch to toggle between local on-device inference and secure cloud infere
   - Ensure sensitive data cleanup after operations
 
 ### 📱 UI/UX Requirements
-
-- [ ] **Settings Interface**
-  - Clear toggle between "Local AI" and "Cloud AI" modes
-  - Status indicators showing active inference mode
-  - Connection status for cloud mode (connected/disconnected)
-  - Option to test cloud connection from settings
 
 - [ ] **Chat Experience**
   - Consistent streaming experience regardless of inference mode

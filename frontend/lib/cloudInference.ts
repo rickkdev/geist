@@ -111,6 +111,14 @@ export class CloudInferenceClient {
     message: CloudMessage,
     onToken?: (token: string) => void
   ): Promise<CloudInferenceResponse> {
+    return this.sendMessageWithRetry(message, onToken, 0);
+  }
+
+  private async sendMessageWithRetry(
+    message: CloudMessage,
+    onToken?: (token: string) => void,
+    attempt: number = 0
+  ): Promise<CloudInferenceResponse> {
     try {
       // Get router public keys
       const keys = await this.getRouterPublicKeys();
@@ -148,11 +156,23 @@ export class CloudInferenceClient {
 
       if (!response.ok) {
         const errorText = await response.text();
-        throw new CloudInferenceError(
+        const isRetryable = response.status >= 500 || response.status === 429;
+        const error = new CloudInferenceError(
           `Request failed: ${response.status} - ${errorText}`,
-          'REQUEST_FAILED',
-          response.status >= 500
+          response.status === 429 ? 'RATE_LIMITED' : 'REQUEST_FAILED',
+          isRetryable
         );
+        
+        // Handle rate limiting with backoff
+        if (response.status === 429 && attempt < this.config.maxRetries) {
+          const retryAfter = response.headers.get('retry-after');
+          const delay = retryAfter ? parseInt(retryAfter) * 1000 : this.calculateBackoffDelay(attempt);
+          console.log(`⏳ Rate limited, retrying after ${delay}ms (attempt ${attempt + 1}/${this.config.maxRetries})`);
+          await this.sleep(delay);
+          return this.sendMessageWithRetry(message, onToken, attempt + 1);
+        }
+        
+        throw error;
       }
 
       // Handle streaming response for React Native
@@ -170,16 +190,55 @@ export class CloudInferenceClient {
       }
     } catch (error) {
       if (error instanceof CloudInferenceError) {
+        // Retry logic for retryable errors
+        if (error.retryable && attempt < this.config.maxRetries) {
+          const delay = this.calculateBackoffDelay(attempt);
+          console.log(`🔄 Retrying request after ${delay}ms (attempt ${attempt + 1}/${this.config.maxRetries}): ${error.message}`);
+          await this.sleep(delay);
+          return this.sendMessageWithRetry(message, onToken, attempt + 1);
+        }
         throw error;
       }
       
-      // Convert other errors to CloudInferenceError
-      throw new CloudInferenceError(
-        `Unexpected error: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        'UNEXPECTED_ERROR',
-        false
+      // Convert network/timeout errors to CloudInferenceError
+      const isNetworkError = error instanceof Error && (
+        error.name === 'AbortError' ||
+        error.message.includes('fetch') ||
+        error.message.includes('network') ||
+        error.message.includes('timeout')
       );
+      
+      const cloudError = new CloudInferenceError(
+        `${isNetworkError ? 'Network' : 'Unexpected'} error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        isNetworkError ? 'NETWORK_ERROR' : 'UNEXPECTED_ERROR',
+        isNetworkError
+      );
+      
+      // Retry network errors
+      if (isNetworkError && attempt < this.config.maxRetries) {
+        const delay = this.calculateBackoffDelay(attempt);
+        console.log(`🌐 Network error, retrying after ${delay}ms (attempt ${attempt + 1}/${this.config.maxRetries})`);
+        await this.sleep(delay);
+        return this.sendMessageWithRetry(message, onToken, attempt + 1);
+      }
+      
+      throw cloudError;
     }
+  }
+
+  private calculateBackoffDelay(attempt: number): number {
+    // Exponential backoff: 1s, 2s, 4s, 8s...
+    const baseDelay = 1000;
+    const maxDelay = 15000; // Cap at 15 seconds
+    const delay = Math.min(baseDelay * Math.pow(2, attempt), maxDelay);
+    
+    // Add jitter to prevent thundering herd
+    const jitter = Math.random() * 0.3 * delay;
+    return Math.floor(delay + jitter);
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 
   private async processStreamingResponse(
@@ -248,8 +307,8 @@ export class CloudInferenceClient {
             const decryptedToken = await this.decryptSSEEvent(event);
             if (decryptedToken) {
               onToken(decryptedToken);
-              // Add small delay to simulate streaming
-              await new Promise(resolve => setTimeout(resolve, 50));
+              // Small delay to maintain streaming effect without being sluggish
+              await new Promise(resolve => setTimeout(resolve, 20));
             }
           } catch (error) {
             console.error('Error decrypting SSE event:', error);

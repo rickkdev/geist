@@ -60,7 +60,7 @@ echo "   Binding to: localhost:8001 (not exposed externally)"
 ../inference/llama.cpp/build/bin/llama-server \
     -m "$MODEL_PATH" \
     -c 4096 \
-    -ngl 0 \
+    -ngl 99 \
     --port 8001 \
     --host 127.0.0.1 \
     --log-disable &

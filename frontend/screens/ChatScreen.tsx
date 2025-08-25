@@ -3,6 +3,7 @@ import { SafeAreaView, View, Text, TouchableOpacity, Alert } from 'react-native'
 import ChatList from '../components/ChatList';
 import InputBar from '../components/InputBar';
 import TypingIndicator from '../components/TypingIndicator';
+import CloudInferenceErrorBoundary from '../components/CloudInferenceErrorBoundary';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useLlama } from '../hooks/useLlama';
 import { useCloudInference } from '../hooks/useCloudInference';
@@ -16,12 +17,14 @@ const ChatScreen: React.FC = () => {
   const { isReady, loading, error, downloadProgress, ask } = useLlama();
   const { 
     isInitialized: cloudInitialized, 
-    isConnected: cloudConnected, 
     isLoading: cloudLoading,
     isGenerating: cloudGenerating,
     error: cloudError,
+    connectionStatus,
+    isRetrying,
+    retryAttempt,
+    rateLimitedUntil,
     ask: askCloud,
-    testConnection,
     clearError: clearCloudError,
     initialize: initializeCloud
   } = useCloudInference({ autoInitialize: false });
@@ -184,15 +187,40 @@ const ChatScreen: React.FC = () => {
       
       // Handle cloud inference errors differently
       if (inferenceMode === 'cloud') {
+        let fallbackMessage = '';
+        
         if (cloudError) {
-          errorText = `Cloud inference error: ${cloudError}`;
+          // Parse error type for better user messaging
+          if (cloudError.includes('Network error') || cloudError.includes('fetch failed')) {
+            fallbackMessage = '🌐 Unable to reach cloud servers. Please check your internet connection and try again.';
+          } else if (cloudError.includes('Rate limited') || cloudError.includes('429')) {
+            fallbackMessage = '⏳ Cloud servers are busy. Please wait a moment and try again.';
+          } else if (cloudError.includes('timeout')) {
+            fallbackMessage = '⏱️ Cloud request timed out. The servers may be overloaded. Please try again.';
+          } else if (cloudError.includes('500') || cloudError.includes('502') || cloudError.includes('503')) {
+            fallbackMessage = '🔧 Cloud servers are temporarily unavailable. Please try again in a few moments.';
+          } else {
+            fallbackMessage = `💥 Cloud inference error: ${cloudError}`;
+          }
+          errorText = fallbackMessage;
         } else if (err instanceof Error) {
-          errorText = `Cloud inference failed: ${err.message}`;
+          if (err.message.includes('Network Error') || err.message.includes('fetch')) {
+            errorText = '🌐 Network connection failed. Please check your internet and try again.';
+          } else if (err.message.includes('timeout')) {
+            errorText = '⏱️ Request timed out. The cloud service may be overloaded.';
+          } else {
+            errorText = `💥 Cloud inference failed: ${err.message}`;
+          }
         }
         
-        // If we have streaming message, preserve it
+        // If we have streaming message, preserve it with context
         if (streamingMessage && streamingMessage.trim()) {
-          errorText = streamingMessage.trim() + '\n\n[Response was interrupted by a cloud error]';
+          errorText = streamingMessage.trim() + '\n\n[⚠️ Response interrupted - ' + (fallbackMessage || 'Cloud connection lost') + ']';
+        }
+        
+        // Add suggestion to switch to local mode for persistent issues
+        if (cloudError && (cloudError.includes('Network') || cloudError.includes('timeout') || cloudError.includes('500'))) {
+          errorText += '\n\n💡 Consider switching to Local mode for offline use.';
         }
       } else {
         // Handle local inference errors (existing logic)
@@ -297,9 +325,40 @@ const ChatScreen: React.FC = () => {
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-white">
-      {/* Header */}
-      <View className="relative border-b border-gray-200 px-4 py-3">
+    <CloudInferenceErrorBoundary
+      onError={(error, errorInfo) => {
+        console.error('CloudInference Error Boundary triggered:', error, errorInfo);
+        // Could send to analytics or error reporting service
+      }}
+      fallback={(error, retry) => (
+        <SafeAreaView className="flex-1 bg-white">
+          <View className="flex-1 items-center justify-center p-5">
+            <Text className="text-lg font-semibold text-red-600 mb-3 text-center">
+              ☁️ Cloud Service Error
+            </Text>
+            <Text className="text-gray-700 mb-4 text-center">
+              There was a problem with cloud inference. You can retry or switch to local AI.
+            </Text>
+            <Text className="text-xs text-gray-500 mb-4 text-center">
+              {error.message}
+            </Text>
+            <TouchableOpacity
+              onPress={retry}
+              className="bg-blue-500 rounded-lg py-3 px-6 mb-3">
+              <Text className="text-white font-medium text-center">Retry Cloud AI</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setInferenceMode('local')}
+              className="bg-gray-100 rounded-lg py-3 px-6">
+              <Text className="text-gray-700 font-medium text-center">Switch to Local AI</Text>
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
+      )}
+    >
+      <SafeAreaView className="flex-1 bg-white">
+        {/* Header */}
+        <View className="relative border-b border-gray-200 px-4 py-3">
         {/* Main Header Button - Clickable area that toggles dropdown */}
         <TouchableOpacity
           onPress={() => setShowDropdown(!showDropdown)}
@@ -313,14 +372,47 @@ const ChatScreen: React.FC = () => {
             Geist
           </Text>
 
-          {/* Current Mode Display - Shows "Local" or "Cloud" in grey */}
-          <Text
-            className="mr-1 text-sm"
-            style={{
-              color: showDropdown ? 'rgba(107, 114, 128, 0.4)' : 'rgba(107, 114, 128, 1)',
-            }}>
-            {inferenceMode === 'local' ? 'Local' : 'Cloud'}
-          </Text>
+          {/* Current Mode Display - Shows "Local" or "Cloud" with status indicator */}
+          <View className="flex-row items-center mr-1">
+            <Text
+              className="text-sm mr-1"
+              style={{
+                color: showDropdown ? 'rgba(107, 114, 128, 0.4)' : 'rgba(107, 114, 128, 1)',
+              }}>
+              {inferenceMode === 'local' ? 'Local' : 'Cloud'}
+            </Text>
+            
+            {/* Connection Status Indicator */}
+            {inferenceMode === 'cloud' && (
+              <View className="flex-row items-center">
+                {connectionStatus === 'connected' && (
+                  <View className="w-2 h-2 bg-green-500 rounded-full" />
+                )}
+                {connectionStatus === 'connecting' && (
+                  <View className="w-2 h-2 bg-yellow-500 rounded-full animate-pulse" />
+                )}
+                {connectionStatus === 'error' && (
+                  <View className="w-2 h-2 bg-red-500 rounded-full" />
+                )}
+                {connectionStatus === 'rate_limited' && (
+                  <View className="w-2 h-2 bg-orange-500 rounded-full" />
+                )}
+                {connectionStatus === 'disconnected' && (
+                  <View className="w-2 h-2 bg-gray-400 rounded-full" />
+                )}
+                {isRetrying && (
+                  <Text className="ml-1 text-xs text-gray-500">
+                    ({retryAttempt}/3)
+                  </Text>
+                )}
+                {rateLimitedUntil && rateLimitedUntil > Date.now() && (
+                  <Text className="ml-1 text-xs text-orange-600">
+                    {Math.ceil((rateLimitedUntil - Date.now()) / 1000)}s
+                  </Text>
+                )}
+              </View>
+            )}
+          </View>
 
           {/* Dropdown Arrow - Right arrow "›" that rotates down when dropdown opens */}
           <Text
@@ -400,7 +492,8 @@ const ChatScreen: React.FC = () => {
         onSend={handleSend}
         disabled={(inferenceMode === 'local' ? !isReady : false) || isTyping || cloudGenerating}
       />
-    </SafeAreaView>
+      </SafeAreaView>
+    </CloudInferenceErrorBoundary>
   );
 };
 
