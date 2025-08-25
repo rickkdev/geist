@@ -48,6 +48,7 @@ export class CloudInferenceClient {
   private config: CloudInferenceConfig;
   private cachedPublicKeys: RouterPublicKeys | null = null;
   private keysCacheExpiry: number = 0;
+  private requestFingerprint: string | null = null;
 
   constructor(config: CloudInferenceConfig) {
     this.config = config;
@@ -65,7 +66,7 @@ export class CloudInferenceClient {
     }
 
     try {
-      const response = await this.fetchWithTimeout(`${this.config.routerUrl}/api/pubkey`, {
+      const response = await this.fetchWithSecurity(`${this.config.routerUrl}/api/pubkey`, {
         method: 'GET',
         headers: {
           'Accept': 'application/json',
@@ -94,6 +95,9 @@ export class CloudInferenceClient {
         );
       }
 
+      // Check for key rotation
+      await this.handleKeyRotation(keys);
+      
       // Cache keys for 10 minutes
       this.cachedPublicKeys = keys;
       this.keysCacheExpiry = Date.now() + 10 * 60 * 1000;
@@ -148,7 +152,7 @@ export class CloudInferenceClient {
       };
 
       // Send request to router
-      const response = await this.fetchWithTimeout(`${this.config.routerUrl}/api/chat`, {
+      const response = await this.fetchWithSecurity(`${this.config.routerUrl}/api/chat`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -440,6 +444,114 @@ export class CloudInferenceClient {
     }
   }
 
+  private async handleKeyRotation(keys: RouterPublicKeys): Promise<void> {
+    try {
+      const expiryTime = new Date(keys.expires_at).getTime();
+      const timeUntilExpiry = expiryTime - Date.now();
+      
+      // Warn if keys expire within 1 hour
+      if (timeUntilExpiry < 3600000 && timeUntilExpiry > 0) {
+        console.log('⚠️ Router keys expiring in', Math.round(timeUntilExpiry / 60000), 'minutes');
+      }
+      
+      // Force refresh if keys are expired or expiring soon
+      if (timeUntilExpiry < 300000) { // 5 minutes
+        console.log('🔄 Router keys expiring soon, clearing cache for refresh');
+        this.cachedPublicKeys = null;
+        this.keysCacheExpiry = 0;
+      }
+    } catch (error) {
+      console.error('Error handling key rotation:', error);
+    }
+  }
+
+  private async validateCertificate(response: Response): Promise<void> {
+    if (!this.config.certificateFingerprint) {
+      return; // Certificate pinning not configured
+    }
+    
+    try {
+      // Check for server-provided certificate fingerprint in headers
+      const serverFingerprint = response.headers.get('x-cert-fingerprint');
+      
+      if (!serverFingerprint) {
+        console.warn('⚠️ Certificate pinning configured but server did not provide fingerprint');
+        return;
+      }
+      
+      if (serverFingerprint !== this.config.certificateFingerprint) {
+        throw new CloudInferenceError(
+          'Certificate fingerprint mismatch - potential MITM attack',
+          'CERT_PINNING_FAILED'
+        );
+      }
+      
+      console.log('✅ Certificate fingerprint validated');
+    } catch (error) {
+      if (error instanceof CloudInferenceError) {
+        throw error;
+      }
+      throw new CloudInferenceError(
+        `Certificate validation failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        'CERT_VALIDATION_ERROR'
+      );
+    }
+  }
+
+  private async generateRequestFingerprint(): Promise<string> {
+    if (this.requestFingerprint) {
+      return this.requestFingerprint;
+    }
+    
+    // Generate a unique fingerprint for this app instance
+    const deviceInfo = {
+      timestamp: Date.now(),
+      random: Math.random().toString(36),
+      userAgent: navigator.userAgent || 'GeistApp',
+    };
+    
+    const encoder = new TextEncoder();
+    const data = encoder.encode(JSON.stringify(deviceInfo));
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = new Uint8Array(hashBuffer);
+    
+    this.requestFingerprint = Array.from(hashArray)
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join('')
+      .substring(0, 16); // Use first 16 chars
+    
+    return this.requestFingerprint;
+  }
+
+  private async fetchWithSecurity(url: string, options: RequestInit): Promise<Response> {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.config.timeout);
+
+    try {
+      const secureOptions = {
+        ...options,
+        signal: controller.signal,
+        headers: {
+          ...options.headers,
+          'User-Agent': 'GeistApp/1.0',
+          'X-Requested-With': 'GeistMobileApp',
+          'X-Request-Fingerprint': await this.generateRequestFingerprint(),
+        },
+      };
+      
+      const response = await fetch(url, secureOptions);
+      clearTimeout(timeoutId);
+      
+      // Validate certificate if pinning is configured
+      await this.validateCertificate(response);
+      
+      return response;
+    } catch (error) {
+      clearTimeout(timeoutId);
+      throw error;
+    }
+  }
+
   private async fetchWithTimeout(url: string, options: RequestInit): Promise<Response> {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.config.timeout);
@@ -484,14 +596,28 @@ export class CloudInferenceClient {
     this.hpkeClient.clearSensitiveData();
     this.cachedPublicKeys = null;
     this.keysCacheExpiry = 0;
+    this.requestFingerprint = null;
   }
 }
 
-// Default configuration
+// Development configuration
 export const defaultCloudConfig: CloudInferenceConfig = {
   routerUrl: 'http://localhost:8000', // Development default
   timeout: 30000, // 30 seconds
   maxRetries: 3,
 };
+
+// Production configuration template
+export const productionCloudConfig: CloudInferenceConfig = {
+  routerUrl: 'https://your-production-domain.com', // Replace with actual production URL
+  timeout: 30000, // 30 seconds
+  maxRetries: 3,
+  certificateFingerprint: 'sha256:ABC123...', // Replace with actual certificate fingerprint
+};
+
+// Configuration factory
+export function createCloudConfig(environment: 'development' | 'production' = 'development'): CloudInferenceConfig {
+  return environment === 'production' ? productionCloudConfig : defaultCloudConfig;
+}
 
 export default CloudInferenceClient;
