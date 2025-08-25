@@ -82,6 +82,10 @@ export class CloudInferenceClient {
 
       const keys: RouterPublicKeys = await response.json();
       
+      // Debug: Log the received public key
+      console.log('🔑 Received public key from backend:', keys.current_pubkey);
+      console.log('🔑 Public key length:', keys.current_pubkey?.length);
+      
       // Validate response format
       if (!keys.current_pubkey || !keys.algorithm) {
         throw new CloudInferenceError(

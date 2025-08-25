@@ -11,27 +11,27 @@ cd "$PROJECT_ROOT"
 echo "🚀 Starting Complete Backend - Development Mode"
 echo "================================================"
 
-# Check if directories exist
-if [[ ! -d "backend/router" ]]; then
-    echo "❌ Router directory not found: backend/router"
+# Check if directories exist (looking for router and inference in current backend directory)
+if [[ ! -d "router" ]]; then
+    echo "❌ Router directory not found: router"
     exit 1
 fi
 
-if [[ ! -d "backend/inference" ]]; then
-    echo "❌ Inference directory not found: backend/inference"
+if [[ ! -d "inference" ]]; then
+    echo "❌ Inference directory not found: inference"
     exit 1
 fi
 
 # Check if llama.cpp is built
-if [[ ! -f "backend/inference/llama.cpp/build/bin/llama-server" ]]; then
-    echo "❌ llama.cpp not found at backend/inference/llama.cpp/build/bin/llama-server"
+if [[ ! -f "inference/llama.cpp/build/bin/llama-server" ]]; then
+    echo "❌ llama.cpp not found at inference/llama.cpp/build/bin/llama-server"
     echo "Please build llama.cpp first:"
-    echo "  cd backend/inference/llama.cpp && make"
+    echo "  cd inference/llama.cpp && make"
     exit 1
 fi
 
 # Check if model exists
-MODEL_PATH="backend/inference/llama.cpp/models/gpt-oss-20b-Q4_K_S.gguf"
+MODEL_PATH="inference/llama.cpp/models/gpt-oss-20b-Q4_K_S.gguf"
 if [[ ! -f "$MODEL_PATH" ]]; then
     echo "❌ Model not found: $MODEL_PATH"
     echo "Please download a model file to that location"
@@ -68,7 +68,7 @@ echo "   Model: $MODEL_PATH"
 echo "   Binding to: localhost:8001"
 
 # Start inference server in background
-cd backend/inference
+cd inference
 llama.cpp/build/bin/llama-server \
     -m "llama.cpp/models/gpt-oss-20b-Q4_K_S.gguf" \
     -c 4096 \
@@ -108,7 +108,7 @@ export INFERENCE_ENDPOINTS='["http://127.0.0.1:8001"]'
 export LOG_LEVEL=DEBUG
 
 # Start router server in background
-cd backend/router
+cd "$PROJECT_ROOT/router"
 uv run uvicorn main:app \
     --host 127.0.0.1 \
     --port 8000 \
@@ -151,8 +151,8 @@ echo ""
 echo "  # Get public keys"
 echo "  curl http://localhost:8000/api/pubkey"
 echo ""
-echo "  # Send encrypted request (from backend/router/ directory)"
-echo "  cd backend/router && python3 create_hpke_request.py \"Hello!\" | grep curl | bash"
+echo "  # Send encrypted request (from router/ directory)"
+echo "  cd router && python3 create_hpke_request.py \"Hello!\" | grep curl | bash"
 echo ""
 echo "🛑 Press Ctrl+C to stop all services"
 echo ""

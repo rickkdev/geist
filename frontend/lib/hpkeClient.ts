@@ -1,26 +1,14 @@
 // Import crypto polyfill first
 import 'react-native-get-random-values';
 import * as SecureStore from 'expo-secure-store';
+import { x25519 } from '@noble/curves/ed25519';
+import { hkdf } from '@noble/hashes/hkdf';
+import { sha256 } from '@noble/hashes/sha256';
+import { chacha20poly1305 } from '@noble/ciphers/chacha';
+import { concatBytes, randomBytes } from '@noble/hashes/utils';
 
-// Use crypto-js for React Native compatibility
-const CryptoJS = require('react-native-crypto-js');
-
-// React Native compatible random bytes generator
-const getRandomBytes = (length: number): Uint8Array => {
-  const array = new Uint8Array(length);
-  
-  // Use crypto.getRandomValues if available (from polyfill)
-  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
-    crypto.getRandomValues(array);
-  } else {
-    // Fallback to Math.random
-    for (let i = 0; i < length; i++) {
-      array[i] = Math.floor(Math.random() * 256);
-    }
-  }
-  
-  return array;
-};
+// Use @noble's cryptographically secure random bytes
+const getRandomBytes = randomBytes;
 
 const DEVICE_PRIVATE_KEY = 'device_private_key';
 const DEVICE_PUBLIC_KEY = 'device_public_key';
@@ -81,14 +69,15 @@ export class HPKEClient {
 
   private async generateAndStoreDeviceKeys(): Promise<void> {
     try {
-      console.log('HPKE: Generating new device keys...');
-      // Generate random key pair for development
+      console.log('HPKE: Generating new X25519 device keys...');
+      
+      // Generate proper X25519 key pair
       const privateKey = getRandomBytes(32);
-      const publicKey = getRandomBytes(32); // Mock public key for development
+      const publicKey = x25519.getPublicKey(privateKey);
 
       // Store keys securely
-      const privateKeyB64 = btoa(String.fromCharCode(...privateKey));
-      const publicKeyB64 = btoa(String.fromCharCode(...publicKey));
+      const privateKeyB64 = btoa(String.fromCharCode.apply(null, Array.from(privateKey)));
+      const publicKeyB64 = btoa(String.fromCharCode.apply(null, Array.from(publicKey)));
 
       console.log('HPKE: Storing keys to SecureStore...');
       await SecureStore.setItemAsync(DEVICE_PRIVATE_KEY, privateKeyB64);
@@ -96,7 +85,7 @@ export class HPKEClient {
 
       this.devicePrivateKey = privateKey;
       this.devicePublicKey = publicKey;
-      console.log('HPKE: New keys generated and stored successfully');
+      console.log('HPKE: New X25519 keys generated and stored successfully');
     } catch (error) {
       console.error('HPKE: Failed to generate and store keys:', error);
       throw error;
@@ -107,7 +96,7 @@ export class HPKEClient {
     if (!this.devicePublicKey) {
       throw new Error('Device keys not initialized');
     }
-    return btoa(String.fromCharCode(...this.devicePublicKey));
+    return btoa(String.fromCharCode.apply(null, Array.from(this.devicePublicKey)));
   }
 
   async seal(
@@ -122,33 +111,62 @@ export class HPKEClient {
       throw new Error('Device keys not initialized');
     }
 
-    // For development, create a simple encrypted message using crypto-js
-    const requestId = Array.from(getRandomBytes(16), b => b.toString(16).padStart(2, '0')).join('');
-    const timestamp = Date.now();
-
-    // For development mode, just base64 encode the plaintext directly (no encryption)
-    // This matches what the backend expects in hpke_service.py:99
-    let ciphertext: string;
     try {
-      // Use proper UTF-8 to base64 encoding for Unicode support
-      const utf8Bytes = new TextEncoder().encode(plaintext);
-      ciphertext = btoa(String.fromCharCode(...utf8Bytes));
-      console.log('🔐 HPKE seal - plaintext length:', plaintext.length, 'ciphertext length:', ciphertext.length);
+      const requestId = Array.from(getRandomBytes(16), b => b.toString(16).padStart(2, '0')).join('');
+      const timestamp = Date.now();
+
+      // Debug: Log recipient public key info
+      console.log('🔑 HPKE: recipientPublicKey (base64):', recipientPublicKey);
+      console.log('🔑 HPKE: recipientPublicKey length:', recipientPublicKey?.length);
+      
+      // Decode recipient public key from base64 - this is PEM-encoded
+      let recipientPubKeyBytes: Uint8Array;
+      try {
+        const pemDecoded = atob(recipientPublicKey);
+        console.log('🔑 HPKE: PEM decoded length:', pemDecoded.length);
+        console.log('🔑 HPKE: PEM content:', pemDecoded);
+        
+        // For development: Since backend uses P-256 instead of X25519, 
+        // we'll use a mock 32-byte key derived from the PEM key hash
+        const pemBytes = new TextEncoder().encode(pemDecoded);
+        recipientPubKeyBytes = sha256(pemBytes);
+        
+        console.log('🔑 HPKE: mock X25519 key length:', recipientPubKeyBytes.length);
+      } catch (error) {
+        throw new Error(`Failed to decode recipient public key: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
+
+      // Generate ephemeral key pair for ECDH
+      const ephemeralPrivateKey = getRandomBytes(32);
+      const ephemeralPublicKey = x25519.getPublicKey(ephemeralPrivateKey);
+
+      // For development: Since we're using a mock key, create a mock shared secret
+      // In production, this would be: x25519.getSharedSecret(ephemeralPrivateKey, recipientPubKeyBytes)
+      const mockSharedSecretSource = concatBytes(ephemeralPrivateKey, recipientPubKeyBytes);
+      const sharedSecret = sha256(mockSharedSecretSource);
+
+      // Derive encryption key using HKDF-SHA256
+      const suite_id = new TextEncoder().encode('HPKE-v1-X25519-HKDF-SHA256-ChaCha20Poly1305');
+      const info = concatBytes(suite_id, new TextEncoder().encode('geist-mobile'));
+      const key = hkdf(sha256, sharedSecret, new Uint8Array(0), info, 32);
+
+      // For development: Backend expects base64-encoded plaintext, not encrypted data
+      // In production, this would do real ChaCha20-Poly1305 encryption
+      console.log('🔐 HPKE: Using development mode - base64 encoding plaintext');
+      const ciphertextB64 = btoa(plaintext);
+
+      console.log('🔐 HPKE seal - plaintext length:', plaintext.length, 'base64 length:', ciphertextB64.length);
+
+      return {
+        encapsulatedKey: btoa(String.fromCharCode.apply(null, Array.from(ephemeralPublicKey))),
+        ciphertext: ciphertextB64,
+        timestamp,
+        requestId
+      };
     } catch (error) {
-      console.error('❌ HPKE seal - base64 encoding failed for plaintext:', plaintext);
-      console.error('❌ Error:', error);
-      throw new Error(`Base64 encoding failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.error('❌ HPKE seal failed:', error);
+      throw new Error(`HPKE encryption failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
-
-    // Generate mock encapsulated key
-    const mockKey = getRandomBytes(32);
-
-    return {
-      encapsulatedKey: btoa(String.fromCharCode(...mockKey)),
-      ciphertext: ciphertext,
-      timestamp,
-      requestId
-    };
   }
 
   async open(
@@ -166,31 +184,18 @@ export class HPKEClient {
     }
 
     try {
-      // Decode the base64 ciphertext (crypto-js encrypted data)
-      const ciphertextB64 = atob(encryptedMessage.ciphertext);
+      // For development: Backend sends base64-encoded plaintext, not encrypted data
+      console.log('🔐 HPKE: Using development mode - base64 decoding plaintext');
+      const decryptedText = atob(encryptedMessage.ciphertext);
       
-      // Use the same secret key as in seal method
-      const secretKey = Array.from(this.devicePrivateKey).map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 32);
-      
-      // Decrypt using crypto-js
-      const decryptedBytes = CryptoJS.AES.decrypt(ciphertextB64, secretKey);
-      const decryptedText = decryptedBytes.toString(CryptoJS.enc.Utf8);
-      
-      // Parse the decrypted JSON data
-      const data = JSON.parse(decryptedText);
-      
-      // Validate request ID matches
-      if (data.requestId !== encryptedMessage.requestId) {
-        throw new Error('Request ID mismatch');
-      }
-
       return {
-        plaintext: data.plaintext,
-        timestamp: data.timestamp,
-        requestId: data.requestId
+        plaintext: decryptedText,
+        timestamp: encryptedMessage.timestamp,
+        requestId: encryptedMessage.requestId
       };
     } catch (error) {
-      throw new Error(`Failed to decrypt message: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.error('❌ HPKE open failed:', error);
+      throw new Error(`HPKE decryption failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
