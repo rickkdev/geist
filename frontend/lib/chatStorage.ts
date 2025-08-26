@@ -178,7 +178,7 @@ export const isDatabaseInitialized = (): boolean => {
 /**
  * Create a new chat
  */
-export const createChat = async (title: string = 'New Chat'): Promise<number> => {
+export const createChat = async (title: string = ''): Promise<number> => {
   console.log('📝 createChat: Starting with title:', title);
 
   const database = getDatabase();
@@ -191,7 +191,7 @@ export const createChat = async (title: string = 'New Chat'): Promise<number> =>
     console.log('📝 createChat: Executing SQL insert...');
     const result = await database.executeSql(
       'INSERT INTO chats (title, created_at, updated_at) VALUES (?, ?, ?)',
-      [title.trim(), now, now]
+      [title, now, now]
     );
 
     console.log('📝 createChat: SQL executed successfully');
@@ -209,7 +209,38 @@ export const createChat = async (title: string = 'New Chat'): Promise<number> =>
 };
 
 /**
- * Get all chats, sorted by updated_at DESC
+ * Generate a title from the first user message in a chat
+ */
+export const getChatTitle = async (chatId: number): Promise<string> => {
+  const database = getDatabase();
+  
+  try {
+    const result = await database.executeSql(
+      'SELECT content FROM messages WHERE chat_id = ? AND role = "user" ORDER BY created_at ASC LIMIT 1',
+      [chatId]
+    );
+    
+    if (result[0].rows.length > 0) {
+      const firstMessage = result[0].rows.item(0).content;
+      let title = firstMessage.trim();
+      
+      // Truncate if longer than ~35 characters to fit sidebar width nicely
+      if (title.length > 35) {
+        title = title.substring(0, 32) + '...';
+      }
+      
+      return title;
+    }
+    
+    return 'New Chat';
+  } catch (error) {
+    console.error('Failed to get chat title:', error);
+    return 'New Chat';
+  }
+};
+
+/**
+ * Get all chats with computed titles, sorted by updated_at DESC
  */
 export const getChats = async (options: { includeArchived?: boolean } = {}): Promise<Chat[]> => {
   const database = getDatabase();
@@ -229,10 +260,18 @@ export const getChats = async (options: { includeArchived?: boolean } = {}): Pro
     const chats: Chat[] = [];
 
     for (let i = 0; i < result[0].rows.length; i++) {
-      chats.push(result[0].rows.item(i));
+      const chat = result[0].rows.item(i);
+      
+      // Get computed title from first user message
+      const computedTitle = await getChatTitle(chat.id);
+      
+      chats.push({
+        ...chat,
+        title: computedTitle
+      });
     }
 
-    console.log(`✅ Retrieved ${chats.length} chats`);
+    console.log(`✅ Retrieved ${chats.length} chats with computed titles`);
     return chats;
   } catch (error) {
     console.error('❌ Failed to get chats:', error);
@@ -301,29 +340,6 @@ export const addMessage = async (
       // Update chat's updated_at timestamp
       await tx.executeSql('UPDATE chats SET updated_at = ? WHERE id = ?', [now, chatId]);
 
-      // Auto-title logic: if title is "New Chat", update on first user message
-      if (role === 'user') {
-        const chatResult = await tx.executeSql('SELECT title FROM chats WHERE id = ?', [chatId]);
-
-        if (chatResult.rows.length > 0) {
-          const currentTitle = chatResult.rows.item(0).title;
-          // Check if title is "New Chat" or empty/null
-          if (currentTitle === 'New Chat' || !currentTitle || currentTitle.trim() === '') {
-            // Use first 6-10 words as title, truncate if too long
-            const words = content.trim().split(/\s+/).slice(0, 8);
-            let newTitle = words.join(' ');
-            
-            // Truncate if longer than 50 characters
-            if (newTitle.length > 50) {
-              newTitle = newTitle.substring(0, 47) + '...';
-            }
-
-            await tx.executeSql('UPDATE chats SET title = ? WHERE id = ?', [newTitle, chatId]);
-
-            console.log(`✅ Auto-titled chat ${chatId}: "${newTitle}"`);
-          }
-        }
-      }
 
       console.log(`✅ Added ${role} message to chat ${chatId}`);
       return result.insertId;

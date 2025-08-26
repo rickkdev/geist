@@ -13,7 +13,8 @@ import {
   deleteChat as deleteChatFromDB,
   renameChat as renameChatFromDB,
   pinChat as pinChatFromDB,
-  archiveChat as archiveChatFromDB
+  archiveChat as archiveChatFromDB,
+  getChatTitle
 } from '../lib/chatStorage';
 
 // Legacy Message type for backward compatibility
@@ -61,7 +62,14 @@ export const useChatStorage = (chatId?: number) => {
       
       const chat = await getChat(id);
       if (chat) {
-        setCurrentChat(chat);
+        // Get computed title
+        const computedTitle = await getChatTitle(id);
+        const chatWithComputedTitle = {
+          ...chat,
+          title: computedTitle
+        };
+        
+        setCurrentChat(chatWithComputedTitle);
         // Convert SQLite messages to legacy format for compatibility
         const legacyMessages: LegacyMessage[] = chat.messages.map(msg => ({
           id: msg.id.toString(),
@@ -97,7 +105,7 @@ export const useChatStorage = (chatId?: number) => {
       }
       
       console.log('🆕 createNewChat: Creating chat...');
-      const newChatId = await createChat('New Chat');
+      const newChatId = await createChat(); // No default title needed
       console.log('✅ Created new chat with ID:', newChatId);
       return newChatId;
     } catch (err) {
