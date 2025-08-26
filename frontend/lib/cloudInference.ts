@@ -1,4 +1,5 @@
 import HPKEClient, { HPKEEncryptedMessage } from './hpkeClient';
+import { sha256 } from '@noble/hashes/sha256';
 
 export interface CloudInferenceConfig {
   routerUrl: string;
@@ -512,8 +513,7 @@ export class CloudInferenceClient {
     
     const encoder = new TextEncoder();
     const data = encoder.encode(JSON.stringify(deviceInfo));
-    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-    const hashArray = new Uint8Array(hashBuffer);
+    const hashArray = new Uint8Array(sha256(data));
     
     this.requestFingerprint = Array.from(hashArray)
       .map(b => b.toString(16).padStart(2, '0'))

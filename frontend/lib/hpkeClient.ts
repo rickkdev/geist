@@ -3,7 +3,7 @@ import 'react-native-get-random-values';
 import * as SecureStore from 'expo-secure-store';
 import { x25519 } from '@noble/curves/ed25519';
 import { hkdf } from '@noble/hashes/hkdf';
-import { sha256 } from '@noble/hashes/sha256';
+import { sha256 as sha256Hash } from '@noble/hashes/sha256';
 import { chacha20poly1305 } from '@noble/ciphers/chacha';
 import { concatBytes, randomBytes } from '@noble/hashes/utils';
 
@@ -133,7 +133,7 @@ export class HPKEClient {
         if (this.DEVELOPMENT_MODE) {
           // Development: Use mock key derived from PEM
           const pemBytes = new TextEncoder().encode(pemDecoded);
-          recipientPubKeyBytes = sha256(pemBytes);
+          recipientPubKeyBytes = new Uint8Array(sha256Hash(pemBytes));
           console.log('🔑 HPKE: Using development mode with mock key');
         } else {
           // Production: Extract actual X25519 key from PEM structure
@@ -160,7 +160,7 @@ export class HPKEClient {
       if (this.DEVELOPMENT_MODE) {
         // Development: Mock shared secret for compatibility
         const mockSharedSecretSource = concatBytes(ephemeralPrivateKey, recipientPubKeyBytes);
-        sharedSecret = sha256(mockSharedSecretSource);
+        sharedSecret = new Uint8Array(sha256Hash(mockSharedSecretSource));
       } else {
         // Production: Real X25519 ECDH
         sharedSecret = x25519.getSharedSecret(ephemeralPrivateKey, recipientPubKeyBytes);
@@ -169,7 +169,7 @@ export class HPKEClient {
       // Derive encryption key using HKDF-SHA256
       const suite_id = new TextEncoder().encode('HPKE-v1-X25519-HKDF-SHA256-ChaCha20Poly1305');
       const info = concatBytes(suite_id, new TextEncoder().encode('geist-mobile'));
-      const key = hkdf(sha256, sharedSecret, new Uint8Array(0), info, 32);
+      const key = hkdf(sha256Hash, sharedSecret, new Uint8Array(0), info, 32);
 
       // Encrypt with ChaCha20-Poly1305
       let ciphertextB64: string;
