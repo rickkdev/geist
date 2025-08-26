@@ -121,17 +121,6 @@ export default function ChatDrawer({
     }
   };
 
-  const formatDate = (timestamp: number) => {
-    const now = Date.now();
-    const diff = now - timestamp;
-    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-
-    if (days === 0) return 'Today';
-    if (days === 1) return 'Yesterday';
-    if (days < 7) return `${days}d ago`;
-
-    return new Date(timestamp).toLocaleDateString();
-  };
 
   const renderChatItem = ({ item: chat }: { item: ChatItem }) => {
     const isActive = chat.id === activeChatId;
@@ -141,7 +130,7 @@ export default function ChatDrawer({
         onPress={() => handleChatPress(chat.id)}
         onLongPress={() => handleLongPress(chat)}
         className={`mx-2 mb-1 rounded-xl px-3 py-3 ${
-          isActive ? 'border-l-4 border-blue-500 bg-blue-500/15' : 'hover:bg-gray-100'
+          isActive ? 'bg-gray-100' : 'hover:bg-gray-100'
         }`}>
         <View className="flex-row items-start justify-between">
           <View className="mr-2 flex-1">
@@ -149,7 +138,6 @@ export default function ChatDrawer({
               {chat.pinned ? '📌 ' : ''}
               {chat.title}
             </Text>
-            <Text className="mt-0.5 text-xs text-gray-500">{formatDate(chat.updated_at)}</Text>
           </View>
 
           {showActionMenu === chat.id && (

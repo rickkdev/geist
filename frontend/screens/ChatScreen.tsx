@@ -68,23 +68,47 @@ const ChatScreen: React.FC = () => {
 
   useEffect(() => {
     loadInferenceMode();
-    // Create a default chat if none exists
-    initializeDefaultChat();
+    // Load the last active chat or create a default one
+    initializeChat();
   }, []);
 
-  const initializeDefaultChat = async () => {
-    if (!currentChatId) {
-      try {
-        console.log('🔄 Initializing default chat...');
-        const newChatId = await createNewChat();
-        setCurrentChatId(newChatId);
-        console.log('✅ Default chat initialized with ID:', newChatId);
-      } catch (error) {
-        console.error('❌ Failed to initialize default chat:', error);
-        Alert.alert('Error', 'Failed to create initial chat. Please restart the app.');
+  const initializeChat = async () => {
+    try {
+      // Try to load the last active chat ID
+      const savedChatId = await AsyncStorage.getItem('current_chat_id');
+      if (savedChatId) {
+        const chatId = parseInt(savedChatId);
+        console.log('🔄 Restoring last active chat:', chatId);
+        setCurrentChatId(chatId);
+        return;
       }
+
+      // If no saved chat, create a new one only if needed
+      console.log('🔄 No previous chat found, initializing default chat...');
+      const newChatId = await createNewChat();
+      setCurrentChatId(newChatId);
+      console.log('✅ Default chat initialized with ID:', newChatId);
+    } catch (error) {
+      console.error('❌ Failed to initialize chat:', error);
+      Alert.alert('Error', 'Failed to initialize chat. Please restart the app.');
     }
   };
+
+  // Save current chat ID to storage when it changes
+  useEffect(() => {
+    const saveChatId = async () => {
+      if (currentChatId) {
+        try {
+          await AsyncStorage.setItem('current_chat_id', currentChatId.toString());
+          console.log('💾 Saved current chat ID to storage:', currentChatId);
+        } catch (error) {
+          console.error('❌ Failed to save chat ID to storage:', error);
+        }
+      }
+    };
+
+    saveChatId();
+  }, [currentChatId]);
 
   // Initialize cloud inference when mode changes to cloud
   useEffect(() => {
