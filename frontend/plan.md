@@ -344,7 +344,7 @@ Add a switch to toggle between local on-device inference and secure cloud infere
   - Create error boundary for cloud inference failures
   - Add connection status indicator in chat UI
 
-- [ ] **Security and Key Management**
+- [x] **Security and Key Management**
   - Generate device key pair automatically on first app launch
   - Store device private key in expo-secure-store without biometric requirements
   - Implement client-side request ID generation and replay protection
@@ -353,6 +353,123 @@ Add a switch to toggle between local on-device inference and secure cloud infere
   - Validate router certificate fingerprint before connections
   - All encryption happens transparently without user interaction
 
+  # 📋 Frontend TODOs — Sidebar + Local Chat Storage + New Chat Button (SQLite)
+
+---
+
+### Phase 9 - Local storage of chats and UX to manage chats
+
+## A Sidebar (Drawer) UI
+
+**Goal:** ChatGPT-style list, mobile-first, built with NativeWind/Tailwind.
+
+- [ ] Add a **left drawer** (gesture + hamburger):
+  - [ ] Drawer container styles: `className="w-72 max-w-[85%] h-full bg-neutral-950 p-4"`
+- [ ] Header:
+  - [ ] App/logo + “Chats” label
+  - [ ] Search input (optional MVP+1)
+- [ ] Chats list (virtualized):
+  - [ ] Fetch `getChats()` sorted by `updated_at DESC`
+  - [ ] Item layout:
+    - [ ] Title (one line, ellipsis) – `className="text-neutral-100 font-medium"`
+    - [ ] Optional last message preview (muted) – `className="text-neutral-400 text-xs"`
+    - [ ] Updated timestamp (tiny) – `className="text-neutral-500 text-[10px]"`
+  - [ ] Active chat highlight:
+    - [ ] `className="bg-primary/15 border-l-4 border-primary rounded-xl"`
+  - [ ] Press → navigate/open chat; close drawer
+  - [ ] Long-press / kebab menu:
+    - [ ] Rename, Pin/Unpin, Archive, Delete (with confirm)
+- [ ] Sections (optional): “Pinned”, “Recent”
+- [ ] Empty state:
+  - [ ] “No chats yet” + CTA to create (calls New Chat)
+
+---
+
+## B Local Storage (SQLite)
+
+**Goal:** Persist chats/messages locally only, with fast list loading.
+
+- [ ] Add SQLite: `expo-sqlite` (Expo) or `react-native-sqlite-storage` (bare).
+- [ ] Create DB on app start; enable WAL:
+  - [ ] `PRAGMA journal_mode=WAL;`
+  - [ ] `PRAGMA synchronous=NORMAL;`
+- [ ] Migrations (idempotent):
+  - [ ] `chats(id PK, title TEXT, created_at INT, updated_at INT, pinned INT DEFAULT 0, archived INT DEFAULT 0)`
+  - [ ] `messages(id PK, chat_id INT, role TEXT, content TEXT, created_at INT)`
+  - [ ] Indexes:
+    - [ ] `CREATE INDEX idx_chats_updated_at ON chats(updated_at DESC);`
+    - [ ] `CREATE INDEX idx_messages_chat_id ON messages(chat_id, created_at);`
+- [ ] Storage helpers:
+  - [ ] `createChat(title?: string) -> chatId`
+  - [ ] `getChats({includeArchived?: boolean}) -> []`
+  - [ ] `getChat(chatId) -> chat + messages (paginated)`
+  - [ ] `addMessage(chatId, role, content)`
+  - [ ] `renameChat(chatId, title)`
+  - [ ] `pinChat(chatId, pinned: boolean)`
+  - [ ] `archiveChat(chatId, archived: boolean)`
+  - [ ] `deleteChat(chatId)` (cascade delete messages)
+- [ ] Auto-title rule:
+  - [ ] If title is “New Chat”, update on first user message (first 6–10 words).
+- [ ] Local-only guarantees:
+  - [ ] iOS: exclude DB dir from iCloud backups.
+  - [ ] Android: `android:allowBackup="false"` or exclude DB file paths.
+
+---
+
+## C New Chat Button (FAB)
+
+**Goal:** Quick creation from anywhere.
+
+- [ ] Floating `+` FAB (bottom-right):
+  - [ ] View styles: `className="absolute bottom-4 right-4 p-4 rounded-full bg-primary shadow-lg"`
+  - [ ] Icon/text `+`
+- [ ] OnPress flow:
+  - [ ] `id = createChat("New Chat")`
+  - [ ] Navigate to Chat screen with `chatId`
+  - [ ] Insert into sidebar store; optimistically render
+  - [ ] Haptics (light) if available
+- [ ] Accessibility:
+  - [ ] `accessibilityLabel="New Chat"`
+
+---
+
+## D Chat Screen Integration (just what’s needed for MVP)
+
+- [ ] On mount:
+  - [ ] Load messages for `chatId` (latest N, then paginate up)
+- [ ] Send message:
+  - [ ] `addMessage(chatId, "user", text)` → update `updated_at`
+  - [ ] Start model stream (local or cloud) → append `"assistant"` messages as chunks (buffer in state, commit on finish)
+  - [ ] If title is “New Chat”, auto-title from first user message
+- [ ] Scroll to bottom on new assistant chunk
+- [ ] Persist on app background (`AppState` listener)
+
+---
+
+## E State & Perf
+
+- [ ] Central store (Zustand/Redux/Context) for:
+  - [ ] `chats` list (ids, title, updated_at, pinned/archived)
+  - [ ] `activeChatId`
+- [ ] Debounce sidebar refresh (e.g., 50–100ms) after writes
+- [ ] Batch DB writes in transactions for message streams
+
+---
+
+## F Safety & UX polish
+
+- [ ] Delete confirm modal (type “DELETE” or two-step)
+- [ ] Rename modal with validation (trim, non-empty)
+- [ ] Optional: “Don’t show content previews in sidebar” toggle
+- [ ] No content in notifications by default
+
+---
+
+## G Tests / Dev Tools
+
+- [ ] Migration test (fresh install vs upgrade)
+- [ ] CRUD unit tests for storage helpers
+- [ ] “Seed demo data” dev command to populate 20 chats for UI testing
   - [ ] **Fix timeout and error for local model**
 
 ### 🧪 Testing and Validation
