@@ -359,7 +359,36 @@ Add a switch to toggle between local on-device inference and secure cloud infere
 
 ### Phase 9 - Local storage of chats and UX to manage chats
 
-## A Sidebar (Drawer) UI
+## ✅ A Local Storage (SQLite)
+
+**Goal:** Persist chats/messages locally only, with fast list loading.
+
+- [x] Add SQLite: `expo-sqlite` (Expo) or `react-native-sqlite-storage` (bare).
+- [x] Create DB on app start; enable WAL:
+  - [x] `PRAGMA journal_mode=WAL;`
+  - [x] `PRAGMA synchronous=NORMAL;`
+- [x] Migrations (idempotent):
+  - [x] `chats(id PK, title TEXT, created_at INT, updated_at INT, pinned INT DEFAULT 0, archived INT DEFAULT 0)`
+  - [x] `messages(id PK, chat_id INT, role TEXT, content TEXT, created_at INT)`
+  - [x] Indexes:
+    - [x] `CREATE INDEX idx_chats_updated_at ON chats(updated_at DESC);`
+    - [x] `CREATE INDEX idx_messages_chat_id ON messages(chat_id, created_at);`
+- [x] Storage helpers:
+  - [x] `createChat(title?: string) -> chatId`
+  - [x] `getChats({includeArchived?: boolean}) -> []`
+  - [x] `getChat(chatId) -> chat + messages (paginated)`
+  - [x] `addMessage(chatId, role, content)`
+  - [x] `renameChat(chatId, title)`
+  - [x] `pinChat(chatId, pinned: boolean)`
+  - [x] `archiveChat(chatId, archived: boolean)`
+  - [x] `deleteChat(chatId)` (cascade delete messages)
+- [x] Auto-title rule:
+  - [x] If title is "New Chat", update on first user message (first 6–10 words).
+- [x] Local-only guarantees:
+  - [x] iOS: exclude DB dir from iCloud backups.
+  - [x] Android: `android:allowBackup="false"` or exclude DB file paths.
+
+## B Sidebar (Drawer) UI
 
 **Goal:** ChatGPT-style list, mobile-first, built with NativeWind/Tailwind.
 
@@ -384,35 +413,6 @@ Add a switch to toggle between local on-device inference and secure cloud infere
   - [ ] “No chats yet” + CTA to create (calls New Chat)
 
 ---
-
-## B Local Storage (SQLite)
-
-**Goal:** Persist chats/messages locally only, with fast list loading.
-
-- [ ] Add SQLite: `expo-sqlite` (Expo) or `react-native-sqlite-storage` (bare).
-- [ ] Create DB on app start; enable WAL:
-  - [ ] `PRAGMA journal_mode=WAL;`
-  - [ ] `PRAGMA synchronous=NORMAL;`
-- [ ] Migrations (idempotent):
-  - [ ] `chats(id PK, title TEXT, created_at INT, updated_at INT, pinned INT DEFAULT 0, archived INT DEFAULT 0)`
-  - [ ] `messages(id PK, chat_id INT, role TEXT, content TEXT, created_at INT)`
-  - [ ] Indexes:
-    - [ ] `CREATE INDEX idx_chats_updated_at ON chats(updated_at DESC);`
-    - [ ] `CREATE INDEX idx_messages_chat_id ON messages(chat_id, created_at);`
-- [ ] Storage helpers:
-  - [ ] `createChat(title?: string) -> chatId`
-  - [ ] `getChats({includeArchived?: boolean}) -> []`
-  - [ ] `getChat(chatId) -> chat + messages (paginated)`
-  - [ ] `addMessage(chatId, role, content)`
-  - [ ] `renameChat(chatId, title)`
-  - [ ] `pinChat(chatId, pinned: boolean)`
-  - [ ] `archiveChat(chatId, archived: boolean)`
-  - [ ] `deleteChat(chatId)` (cascade delete messages)
-- [ ] Auto-title rule:
-  - [ ] If title is “New Chat”, update on first user message (first 6–10 words).
-- [ ] Local-only guarantees:
-  - [ ] iOS: exclude DB dir from iCloud backups.
-  - [ ] Android: `android:allowBackup="false"` or exclude DB file paths.
 
 ---
 
