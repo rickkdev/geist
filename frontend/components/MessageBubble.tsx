@@ -1,9 +1,16 @@
 import React from 'react';
 import { View, Text } from 'react-native';
-import { Message } from '../lib/chatStorage';
+
+// Legacy Message type for compatibility
+interface LegacyMessage {
+  id: string;
+  text: string;
+  role: 'user' | 'assistant';
+  timestamp: number;
+}
 
 interface MessageBubbleProps {
-  message: Message;
+  message: LegacyMessage;
 }
 
 const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {

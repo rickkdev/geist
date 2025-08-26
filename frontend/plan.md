@@ -392,44 +392,44 @@ Add a switch to toggle between local on-device inference and secure cloud infere
 
 **Goal:** ChatGPT-style list, mobile-first, built with NativeWind/Tailwind.
 
-- [ ] Add a **left drawer** (gesture + hamburger):
-  - [ ] Drawer container styles: `className="w-72 max-w-[85%] h-full bg-neutral-950 p-4"`
-- [ ] Header:
-  - [ ] App/logo + “Chats” label
-  - [ ] Search input (optional MVP+1)
-- [ ] Chats list (virtualized):
-  - [ ] Fetch `getChats()` sorted by `updated_at DESC`
-  - [ ] Item layout:
-    - [ ] Title (one line, ellipsis) – `className="text-neutral-100 font-medium"`
-    - [ ] Optional last message preview (muted) – `className="text-neutral-400 text-xs"`
-    - [ ] Updated timestamp (tiny) – `className="text-neutral-500 text-[10px]"`
-  - [ ] Active chat highlight:
-    - [ ] `className="bg-primary/15 border-l-4 border-primary rounded-xl"`
-  - [ ] Press → navigate/open chat; close drawer
-  - [ ] Long-press / kebab menu:
-    - [ ] Rename, Pin/Unpin, Archive, Delete (with confirm)
-- [ ] Sections (optional): “Pinned”, “Recent”
-- [ ] Empty state:
-  - [ ] “No chats yet” + CTA to create (calls New Chat)
+- [x] Add a **left drawer** (gesture + hamburger):
+  - [x] Drawer container styles: `className="w-72 max-w-[85%] h-full bg-neutral-950 p-4"`
+- [x] Header:
+  - [x] App/logo + “Chats” label
+  - [x] Search input (optional MVP+1)
+- [x] Chats list (virtualized):
+  - [x] Fetch `getChats()` sorted by `updated_at DESC`
+  - [x] Item layout:
+    - [x] Title (one line, ellipsis) – `className="text-neutral-100 font-medium"`
+    - [x] Optional last message preview (muted) – `className="text-neutral-400 text-xs"`
+    - [x] Updated timestamp (tiny) – `className="text-neutral-500 text-[10px]"`
+  - [x] Active chat highlight:
+    - [x] `className="bg-primary/15 border-l-4 border-primary rounded-xl"`
+  - [x] Press → navigate/open chat; close drawer
+  - [x] Long-press / kebab menu:
+    - [x] Rename, Pin/Unpin, Archive, Delete (with confirm)
+- [x] Sections (optional): “Pinned”, “Recent”
+- [x] Empty state:
+  - [x] “No chats yet” + CTA to create (calls New Chat)
 
 ---
 
 ---
 
-## C New Chat Button (FAB)
+## ✅ C New Chat Button (FAB)
 
 **Goal:** Quick creation from anywhere.
 
-- [ ] Floating `+` FAB (bottom-right):
-  - [ ] View styles: `className="absolute bottom-4 right-4 p-4 rounded-full bg-primary shadow-lg"`
-  - [ ] Icon/text `+`
-- [ ] OnPress flow:
-  - [ ] `id = createChat("New Chat")`
-  - [ ] Navigate to Chat screen with `chatId`
-  - [ ] Insert into sidebar store; optimistically render
-  - [ ] Haptics (light) if available
-- [ ] Accessibility:
-  - [ ] `accessibilityLabel="New Chat"`
+- [x] Icon for new chat (SVG edit/pen icon implemented)
+- [x] New Chat Icon (top right same height as Geist)
+- [x] View styles: `className="p-2 rounded-lg"` (header positioning)
+- [x] OnPress flow:
+  - [x] `id = createChat("New Chat")`
+  - [x] Navigate to Chat screen with `chatId`
+  - [x] Insert into sidebar store; optimistically render
+  - [x] Haptics (light) if available (with error handling)
+- [x] Accessibility:
+  - [x] `accessibilityLabel="New Chat"`
 
 ---
 

@@ -51,19 +51,28 @@ export class HPKEClient {
       const storedPrivateKey = await SecureStore.getItemAsync(DEVICE_PRIVATE_KEY);
       const storedPublicKey = await SecureStore.getItemAsync(DEVICE_PUBLIC_KEY);
 
+      console.log('HPKE: storedPrivateKey exists:', !!storedPrivateKey);
+      console.log('HPKE: storedPublicKey exists:', !!storedPublicKey);
+
       if (storedPrivateKey && storedPublicKey) {
         console.log('HPKE: Found stored keys, loading...');
         this.devicePrivateKey = new Uint8Array(
-          Array.from(atob(storedPrivateKey), c => c.charCodeAt(0))
+          Array.from(atob(storedPrivateKey), (c) => c.charCodeAt(0))
         );
         this.devicePublicKey = new Uint8Array(
-          Array.from(atob(storedPublicKey), c => c.charCodeAt(0))
+          Array.from(atob(storedPublicKey), (c) => c.charCodeAt(0))
         );
         console.log('HPKE: Stored keys loaded successfully');
+        console.log('HPKE: devicePrivateKey length:', this.devicePrivateKey?.length);
+        console.log('HPKE: devicePublicKey length:', this.devicePublicKey?.length);
       } else {
         console.log('HPKE: No stored keys found, generating new ones...');
         await this.generateAndStoreDeviceKeys();
       }
+
+      console.log('HPKE: loadOrGenerateDeviceKeys complete');
+      console.log('HPKE: Final devicePrivateKey exists:', !!this.devicePrivateKey);
+      console.log('HPKE: Final devicePublicKey exists:', !!this.devicePublicKey);
     } catch (error) {
       console.error('HPKE: Error loading device keys:', error);
       console.log('HPKE: Falling back to generating new keys...');
@@ -74,10 +83,13 @@ export class HPKEClient {
   private async generateAndStoreDeviceKeys(): Promise<void> {
     try {
       console.log('HPKE: Generating new X25519 device keys...');
-      
+
       // Generate proper X25519 key pair
       const privateKey = getRandomBytes(32);
       const publicKey = x25519.getPublicKey(privateKey);
+
+      console.log('HPKE: Generated keys - privateKey length:', privateKey.length);
+      console.log('HPKE: Generated keys - publicKey length:', publicKey.length);
 
       // Store keys securely
       const privateKeyB64 = btoa(String.fromCharCode.apply(null, Array.from(privateKey)));
@@ -90,6 +102,8 @@ export class HPKEClient {
       this.devicePrivateKey = privateKey;
       this.devicePublicKey = publicKey;
       console.log('HPKE: New X25519 keys generated and stored successfully');
+      console.log('HPKE: this.devicePrivateKey length:', this.devicePrivateKey?.length);
+      console.log('HPKE: this.devicePublicKey length:', this.devicePublicKey?.length);
     } catch (error) {
       console.error('HPKE: Failed to generate and store keys:', error);
       throw error;
@@ -103,33 +117,37 @@ export class HPKEClient {
     return btoa(String.fromCharCode.apply(null, Array.from(this.devicePublicKey)));
   }
 
-  async seal(
-    plaintext: string,
-    recipientPublicKey: string
-  ): Promise<HPKEEncryptedMessage> {
+  async seal(plaintext: string, recipientPublicKey: string): Promise<HPKEEncryptedMessage> {
     console.log('HPKE: seal() called, checking device keys...');
     console.log('HPKE: devicePrivateKey exists:', !!this.devicePrivateKey);
     console.log('HPKE: devicePublicKey exists:', !!this.devicePublicKey);
-    
+
     if (!this.devicePrivateKey) {
-      throw new Error('Device keys not initialized');
+      console.log('HPKE: Device keys missing, re-initializing...');
+      await this.initialize();
+
+      if (!this.devicePrivateKey) {
+        throw new Error('Device keys not initialized after re-initialization');
+      }
     }
 
     try {
-      const requestId = Array.from(getRandomBytes(16), b => b.toString(16).padStart(2, '0')).join('');
+      const requestId = Array.from(getRandomBytes(16), (b) => b.toString(16).padStart(2, '0')).join(
+        ''
+      );
       const timestamp = Date.now();
 
       // Debug: Log recipient public key info
       console.log('🔑 HPKE: recipientPublicKey (base64):', recipientPublicKey);
       console.log('🔑 HPKE: recipientPublicKey length:', recipientPublicKey?.length);
-      
+
       // Decode recipient public key from base64 - this is PEM-encoded
       let recipientPubKeyBytes: Uint8Array;
       try {
         const pemDecoded = atob(recipientPublicKey);
         console.log('🔑 HPKE: PEM decoded length:', pemDecoded.length);
         console.log('🔑 HPKE: PEM content:', pemDecoded);
-        
+
         if (this.DEVELOPMENT_MODE) {
           // Development: Use mock key derived from PEM
           const pemBytes = new TextEncoder().encode(pemDecoded);
@@ -138,17 +156,19 @@ export class HPKEClient {
         } else {
           // Production: Extract actual X25519 key from PEM structure
           // This assumes the backend sends proper X25519 public keys in production
-          recipientPubKeyBytes = new Uint8Array(
-            Array.from(pemDecoded, c => c.charCodeAt(0))
-          );
+          recipientPubKeyBytes = new Uint8Array(Array.from(pemDecoded, (c) => c.charCodeAt(0)));
           if (recipientPubKeyBytes.length !== 32) {
-            throw new Error(`Invalid X25519 key length: ${recipientPubKeyBytes.length}, expected 32`);
+            throw new Error(
+              `Invalid X25519 key length: ${recipientPubKeyBytes.length}, expected 32`
+            );
           }
         }
-        
+
         console.log('🔑 HPKE: recipient key length:', recipientPubKeyBytes.length);
       } catch (error) {
-        throw new Error(`Failed to decode recipient public key: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        throw new Error(
+          `Failed to decode recipient public key: ${error instanceof Error ? error.message : 'Unknown error'}`
+        );
       }
 
       // Generate ephemeral key pair for ECDH
@@ -174,7 +194,7 @@ export class HPKEClient {
       // Encrypt with ChaCha20-Poly1305
       let ciphertextB64: string;
       let nonceB64: string;
-      
+
       if (this.DEVELOPMENT_MODE) {
         // Development: Base64 encoding for backend compatibility
         console.log('🔐 HPKE: Using development mode - base64 encoding plaintext');
@@ -187,13 +207,18 @@ export class HPKEClient {
         const cipher = chacha20poly1305(key, nonce);
         const plainTextBytes = new TextEncoder().encode(plaintext);
         const encrypted = cipher.encrypt(plainTextBytes);
-        
+
         ciphertextB64 = btoa(String.fromCharCode.apply(null, Array.from(encrypted)));
         nonceB64 = btoa(String.fromCharCode.apply(null, Array.from(nonce)));
       }
-      
-      console.log('🔐 HPKE seal - plaintext length:', plaintext.length, 'ciphertext length:', ciphertextB64.length);
-      
+
+      console.log(
+        '🔐 HPKE seal - plaintext length:',
+        plaintext.length,
+        'ciphertext length:',
+        ciphertextB64.length
+      );
+
       // Secure cleanup of sensitive intermediate values
       this.secureWipe(sharedSecret);
       this.secureWipe(ephemeralPrivateKey);
@@ -201,17 +226,19 @@ export class HPKEClient {
 
       // Validate and track request ID for replay protection
       this.validateAndTrackRequestId(requestId);
-      
+
       return {
         encapsulatedKey: btoa(String.fromCharCode.apply(null, Array.from(ephemeralPublicKey))),
         ciphertext: ciphertextB64,
         nonce: nonceB64,
         timestamp,
-        requestId
+        requestId,
       };
     } catch (error) {
       console.error('❌ HPKE seal failed:', error);
-      throw new Error(`HPKE encryption failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw new Error(
+        `HPKE encryption failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
     }
   }
 
@@ -234,9 +261,9 @@ export class HPKEClient {
       if (this.usedRequestIds.has(encryptedMessage.requestId)) {
         throw new Error('Request ID already used (potential replay attack)');
       }
-      
+
       let decryptedText: string;
-      
+
       if (this.DEVELOPMENT_MODE) {
         // Development: Base64 decoding
         console.log('🔐 HPKE: Using development mode - base64 decoding plaintext');
@@ -244,36 +271,40 @@ export class HPKEClient {
       } else {
         // Production: Real ChaCha20-Poly1305 decryption
         console.log('🔐 HPKE: Using production decryption - ChaCha20-Poly1305');
-        
+
         if (!encryptedMessage.nonce) {
           throw new Error('Nonce missing from encrypted message');
         }
-        
+
         const nonce = new Uint8Array(
-          Array.from(atob(encryptedMessage.nonce), c => c.charCodeAt(0))
+          Array.from(atob(encryptedMessage.nonce), (c) => c.charCodeAt(0))
         );
         const ciphertext = new Uint8Array(
-          Array.from(atob(encryptedMessage.ciphertext), c => c.charCodeAt(0))
+          Array.from(atob(encryptedMessage.ciphertext), (c) => c.charCodeAt(0))
         );
-        
+
         // Derive the same key used for encryption
         // This would need the same HKDF process as in seal()
         const suite_id = new TextEncoder().encode('HPKE-v1-X25519-HKDF-SHA256-ChaCha20Poly1305');
         const info = concatBytes(suite_id, new TextEncoder().encode('geist-mobile'));
-        
+
         // Note: This is simplified - in full HPKE we'd need the ephemeral key
         // and recipient private key to reconstruct the shared secret
-        throw new Error('Full HPKE decryption not implemented - requires ephemeral key from message');
+        throw new Error(
+          'Full HPKE decryption not implemented - requires ephemeral key from message'
+        );
       }
-      
+
       return {
         plaintext: decryptedText,
         timestamp: encryptedMessage.timestamp,
-        requestId: encryptedMessage.requestId
+        requestId: encryptedMessage.requestId,
       };
     } catch (error) {
       console.error('❌ HPKE open failed:', error);
-      throw new Error(`HPKE decryption failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw new Error(
+        `HPKE decryption failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
     }
   }
 
@@ -281,15 +312,15 @@ export class HPKEClient {
     if (this.usedRequestIds.has(requestId)) {
       throw new Error('Request ID already used (replay attack detected)');
     }
-    
+
     this.usedRequestIds.add(requestId);
-    
+
     // Clean up old request IDs to prevent memory bloat
     if (this.usedRequestIds.size > this.MAX_REQUEST_IDS) {
       // Convert to array, sort, and keep only the most recent half
       const sortedIds = Array.from(this.usedRequestIds).sort();
       this.usedRequestIds.clear();
-      
+
       // Keep the second half (more recent IDs assuming timestamp-based IDs)
       const keepFrom = Math.floor(sortedIds.length / 2);
       for (let i = keepFrom; i < sortedIds.length; i++) {
@@ -300,7 +331,7 @@ export class HPKEClient {
 
   private secureWipe(data: Uint8Array): void {
     if (!data) return;
-    
+
     try {
       // First overwrite with random data
       crypto.getRandomValues(data);
@@ -330,7 +361,7 @@ export class HPKEClient {
       this.secureWipe(this.devicePublicKey);
       this.devicePublicKey = null;
     }
-    
+
     // Clear request ID tracking
     this.usedRequestIds.clear();
   }

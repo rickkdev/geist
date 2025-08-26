@@ -45,8 +45,15 @@ let db: SQLite.SQLiteDatabase | null = null;
 export const initializeDatabase = async (): Promise<void> => {
   try {
     console.log('🗄️ Initializing SQLite database...');
-    
+    console.log('🗄️ Database config:', {
+      DATABASE_NAME,
+      DATABASE_VERSION,
+      DATABASE_DISPLAY_NAME,
+      DATABASE_SIZE,
+    });
+
     // Open database
+    console.log('🗄️ Opening database...');
     db = await SQLite.openDatabase({
       name: DATABASE_NAME,
       version: DATABASE_VERSION,
@@ -55,24 +62,30 @@ export const initializeDatabase = async (): Promise<void> => {
     });
 
     console.log('✅ Database opened successfully');
+    console.log('🗄️ Database instance:', !!db);
 
     // Enable WAL mode for better concurrent access
+    console.log('🗄️ Enabling WAL mode...');
     await db.executeSql('PRAGMA journal_mode=WAL;');
     await db.executeSql('PRAGMA synchronous=NORMAL;');
-    
+
     console.log('✅ WAL mode enabled');
 
     // Run migrations
+    console.log('🗄️ Running migrations...');
     await runMigrations();
-    
+
     // Configure iOS backup exclusion
     if (Platform.OS === 'ios') {
       await configureIOSBackupExclusion();
     }
 
     console.log('🎉 Database initialization complete');
+    console.log('🗄️ Final db instance:', !!db);
   } catch (error) {
     console.error('❌ Database initialization failed:', error);
+    console.error('❌ Error details:', error instanceof Error ? error.message : 'Unknown error');
+    console.error('❌ Error stack:', error instanceof Error ? error.stack : 'No stack trace');
     throw error;
   }
 };
@@ -146,30 +159,51 @@ const configureIOSBackupExclusion = async (): Promise<void> => {
  * Get database instance (ensure it's initialized)
  */
 const getDatabase = (): SQLite.SQLiteDatabase => {
+  console.log('🔍 getDatabase: Checking db instance:', !!db);
   if (!db) {
+    console.error('🔍 getDatabase: Database not initialized!');
     throw new Error('Database not initialized. Call initializeDatabase() first.');
   }
+  console.log('🔍 getDatabase: Returning database instance');
   return db;
+};
+
+/**
+ * Check if database is initialized
+ */
+export const isDatabaseInitialized = (): boolean => {
+  return db !== null;
 };
 
 /**
  * Create a new chat
  */
 export const createChat = async (title: string = 'New Chat'): Promise<number> => {
+  console.log('📝 createChat: Starting with title:', title);
+
   const database = getDatabase();
+  console.log('📝 createChat: Got database instance:', !!database);
+
   const now = Date.now();
+  console.log('📝 createChat: Timestamp:', now);
 
   try {
+    console.log('📝 createChat: Executing SQL insert...');
     const result = await database.executeSql(
       'INSERT INTO chats (title, created_at, updated_at) VALUES (?, ?, ?)',
       [title.trim(), now, now]
     );
+
+    console.log('📝 createChat: SQL executed successfully');
+    console.log('📝 createChat: Result:', result);
 
     const chatId = result[0].insertId;
     console.log(`✅ Created chat with ID: ${chatId}`);
     return chatId;
   } catch (error) {
     console.error('❌ Failed to create chat:', error);
+    console.error('❌ Error details:', error instanceof Error ? error.message : 'Unknown error');
+    console.error('❌ Error stack:', error instanceof Error ? error.stack : 'No stack trace');
     throw error;
   }
 };
@@ -209,16 +243,16 @@ export const getChats = async (options: { includeArchived?: boolean } = {}): Pro
 /**
  * Get a single chat with its messages
  */
-export const getChat = async (chatId: number, options: { limit?: number; offset?: number } = {}): Promise<ChatWithMessages | null> => {
+export const getChat = async (
+  chatId: number,
+  options: { limit?: number; offset?: number } = {}
+): Promise<ChatWithMessages | null> => {
   const database = getDatabase();
   const { limit = 100, offset = 0 } = options;
 
   try {
     // Get chat details
-    const chatResult = await database.executeSql(
-      'SELECT * FROM chats WHERE id = ?',
-      [chatId]
-    );
+    const chatResult = await database.executeSql('SELECT * FROM chats WHERE id = ?', [chatId]);
 
     if (chatResult[0].rows.length === 0) {
       return null;
@@ -248,7 +282,11 @@ export const getChat = async (chatId: number, options: { limit?: number; offset?
 /**
  * Add a message to a chat and update chat's updated_at
  */
-export const addMessage = async (chatId: number, role: 'user' | 'assistant', content: string): Promise<number> => {
+export const addMessage = async (
+  chatId: number,
+  role: 'user' | 'assistant',
+  content: string
+): Promise<number> => {
   const database = getDatabase();
   const now = Date.now();
 
@@ -261,28 +299,19 @@ export const addMessage = async (chatId: number, role: 'user' | 'assistant', con
       );
 
       // Update chat's updated_at timestamp
-      await tx.executeSql(
-        'UPDATE chats SET updated_at = ? WHERE id = ?',
-        [now, chatId]
-      );
+      await tx.executeSql('UPDATE chats SET updated_at = ? WHERE id = ?', [now, chatId]);
 
       // Auto-title logic: if title is "New Chat", update on first user message
       if (role === 'user') {
-        const chatResult = await tx.executeSql(
-          'SELECT title FROM chats WHERE id = ?',
-          [chatId]
-        );
-        
+        const chatResult = await tx.executeSql('SELECT title FROM chats WHERE id = ?', [chatId]);
+
         if (chatResult.rows.length > 0 && chatResult.rows.item(0).title === 'New Chat') {
           // Use first 6-10 words as title
           const words = content.trim().split(/\s+/).slice(0, 10);
           const newTitle = words.join(' ');
-          
-          await tx.executeSql(
-            'UPDATE chats SET title = ? WHERE id = ?',
-            [newTitle, chatId]
-          );
-          
+
+          await tx.executeSql('UPDATE chats SET title = ? WHERE id = ?', [newTitle, chatId]);
+
           console.log(`✅ Auto-titled chat ${chatId}: "${newTitle}"`);
         }
       }
@@ -310,10 +339,11 @@ export const renameChat = async (chatId: number, title: string): Promise<void> =
   }
 
   try {
-    await database.executeSql(
-      'UPDATE chats SET title = ?, updated_at = ? WHERE id = ?',
-      [trimmedTitle, Date.now(), chatId]
-    );
+    await database.executeSql('UPDATE chats SET title = ?, updated_at = ? WHERE id = ?', [
+      trimmedTitle,
+      Date.now(),
+      chatId,
+    ]);
 
     console.log(`✅ Renamed chat ${chatId} to: "${trimmedTitle}"`);
   } catch (error) {
@@ -329,10 +359,11 @@ export const pinChat = async (chatId: number, pinned: boolean): Promise<void> =>
   const database = getDatabase();
 
   try {
-    await database.executeSql(
-      'UPDATE chats SET pinned = ?, updated_at = ? WHERE id = ?',
-      [pinned ? 1 : 0, Date.now(), chatId]
-    );
+    await database.executeSql('UPDATE chats SET pinned = ?, updated_at = ? WHERE id = ?', [
+      pinned ? 1 : 0,
+      Date.now(),
+      chatId,
+    ]);
 
     console.log(`✅ ${pinned ? 'Pinned' : 'Unpinned'} chat ${chatId}`);
   } catch (error) {
@@ -348,10 +379,11 @@ export const archiveChat = async (chatId: number, archived: boolean): Promise<vo
   const database = getDatabase();
 
   try {
-    await database.executeSql(
-      'UPDATE chats SET archived = ?, updated_at = ? WHERE id = ?',
-      [archived ? 1 : 0, Date.now(), chatId]
-    );
+    await database.executeSql('UPDATE chats SET archived = ?, updated_at = ? WHERE id = ?', [
+      archived ? 1 : 0,
+      Date.now(),
+      chatId,
+    ]);
 
     console.log(`✅ ${archived ? 'Archived' : 'Unarchived'} chat ${chatId}`);
   } catch (error) {
@@ -370,7 +402,7 @@ export const deleteChat = async (chatId: number): Promise<void> => {
     await database.transaction(async (tx) => {
       // Delete messages first (though CASCADE should handle this)
       await tx.executeSql('DELETE FROM messages WHERE chat_id = ?', [chatId]);
-      
+
       // Delete chat
       await tx.executeSql('DELETE FROM chats WHERE id = ?', [chatId]);
     });

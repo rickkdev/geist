@@ -7,6 +7,7 @@ import {
   Alert,
   Animated,
   Dimensions,
+  Platform,
 } from 'react-native';
 import ChatList from '../components/ChatList';
 import InputBar from '../components/InputBar';
@@ -14,11 +15,11 @@ import TypingIndicator from '../components/TypingIndicator';
 import CloudInferenceErrorBoundary from '../components/CloudInferenceErrorBoundary';
 import ChatDrawer from '../components/ChatDrawer';
 import HamburgerIcon from '../components/HamburgerIcon';
+import NewChatButton from '../components/NewChatButton';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useLlama } from '../hooks/useLlama';
 import { useCloudInference } from '../hooks/useCloudInference';
-import { useChatHistory } from '../hooks/useChatHistory';
-import { Message } from '../lib/chatStorage';
+import { useChatStorage, LegacyMessage } from '../hooks/useChatStorage';
 
 type InferenceMode = 'local' | 'cloud';
 
@@ -26,7 +27,9 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const DRAWER_WIDTH = Math.min(288, SCREEN_WIDTH * 0.85);
 
 const ChatScreen: React.FC = () => {
-  const { messages, addMessage, logChatHistoryForLLM } = useChatHistory();
+  const [currentChatId, setCurrentChatId] = useState<number | undefined>();
+  const { messages, addMessage, createNewChat, logChatHistoryForLLM } =
+    useChatStorage(currentChatId);
   const { isReady, loading, error, downloadProgress, ask } = useLlama();
   const {
     isInitialized: cloudInitialized,
@@ -47,14 +50,28 @@ const ChatScreen: React.FC = () => {
   const [inferenceMode, setInferenceMode] = useState<InferenceMode>('local');
   const [showDropdown, setShowDropdown] = useState(false);
   const [showDrawer, setShowDrawer] = useState(false);
-  const [currentChatId, setCurrentChatId] = useState<number | undefined>();
 
   // Animation for sliding the app content
   const slideAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     loadInferenceMode();
+    // Create a default chat if none exists
+    initializeDefaultChat();
   }, []);
+
+  const initializeDefaultChat = async () => {
+    if (!currentChatId) {
+      try {
+        console.log('🔄 Initializing default chat...');
+        const newChatId = await createNewChat();
+        setCurrentChatId(newChatId);
+        console.log('✅ Default chat initialized with ID:', newChatId);
+      } catch (error) {
+        console.error('❌ Failed to initialize default chat:', error);
+      }
+    }
+  };
 
   // Initialize cloud inference when mode changes to cloud
   useEffect(() => {
@@ -120,6 +137,19 @@ const ChatScreen: React.FC = () => {
   };
 
   const handleSend = async () => {
+    // Ensure we have an active chat
+    if (!currentChatId) {
+      console.log('⚠️ No active chat, creating one...');
+      try {
+        const newChatId = await createNewChat();
+        setCurrentChatId(newChatId);
+      } catch (error) {
+        console.error('❌ Failed to create chat for message:', error);
+        Alert.alert('Error', 'Failed to create chat. Please try again.');
+        return;
+      }
+    }
+
     // Initialize cloud inference if needed
     if (inferenceMode === 'cloud' && !cloudInitialized && !cloudLoading) {
       try {
@@ -136,13 +166,15 @@ const ChatScreen: React.FC = () => {
 
     if (!input.trim() || !isInferenceReady || isCurrentlyGenerating) return;
 
-    const userMessage: Message = {
+    console.log('📝 Adding user message to chat ID:', currentChatId);
+    const userMessage: LegacyMessage = {
       id: Date.now().toString(),
       text: input,
       role: 'user',
       timestamp: Date.now(),
     };
     await addMessage(userMessage);
+    console.log('✅ User message added successfully');
     setInput('');
     setIsTyping(true);
     setStreamingMessage('');
@@ -178,14 +210,21 @@ const ChatScreen: React.FC = () => {
 
         replyText = fullResponse;
       } else {
-        // Use local inference
-        replyText = await ask(conversationHistory, (token: string) => {
+        // Use local inference - convert LegacyMessage to SQLite Message format
+        const localMessages = conversationHistory.map((msg) => ({
+          id: parseInt(msg.id),
+          chat_id: currentChatId!, // We know it's defined now due to validation above
+          role: msg.role,
+          content: msg.text,
+          created_at: msg.timestamp,
+        }));
+        replyText = await ask(localMessages, (token: string) => {
           fullResponse += token;
           setStreamingMessage(fullResponse);
         });
       }
 
-      const assistantMessage: Message = {
+      const assistantMessage: LegacyMessage = {
         id: assistantId,
         text: replyText || fullResponse,
         role: 'assistant',
@@ -295,7 +334,7 @@ const ChatScreen: React.FC = () => {
         }
       }
 
-      const errorMessage: Message = {
+      const errorMessage: LegacyMessage = {
         id: (Date.now() + 1).toString(),
         text: errorText,
         role: 'assistant',
@@ -348,10 +387,36 @@ const ChatScreen: React.FC = () => {
     handleDrawerClose();
   };
 
-  const handleNewChat = () => {
-    setCurrentChatId(undefined);
-    // TODO: Create new chat and switch to it
-    handleDrawerClose();
+  const handleNewChat = async () => {
+    try {
+      console.log('🆕 Creating new chat...');
+
+      // Create a new chat
+      const newChatId = await createNewChat();
+      console.log('✅ New chat created with ID:', newChatId);
+
+      setCurrentChatId(newChatId);
+      handleDrawerClose();
+
+      // Add haptic feedback if available (optional)
+      if (Platform.OS === 'ios') {
+        try {
+          // Try to use React Native's built-in haptics if available
+          const { HapticFeedback } = require('react-native');
+          if (HapticFeedback && HapticFeedback.trigger) {
+            HapticFeedback.trigger('impactLight');
+          }
+        } catch (error) {
+          // Haptic feedback not available, ignore
+          console.log('📱 Haptic feedback not available');
+        }
+      }
+
+      console.log('🎉 New chat setup complete');
+    } catch (error) {
+      console.error('❌ Failed to create new chat:', error);
+      Alert.alert('Error', 'Failed to create new chat. Please try again.');
+    }
   };
 
   // Show loading state based on inference mode
@@ -502,6 +567,11 @@ const ChatScreen: React.FC = () => {
                   ›
                 </Text>
               </TouchableOpacity>
+
+              {/* Right side - New Chat Button */}
+              <View className="ml-auto">
+                <NewChatButton onPress={handleNewChat} />
+              </View>
             </View>
 
             {/* Dropdown Menu - Only visible when showDropdown is true */}

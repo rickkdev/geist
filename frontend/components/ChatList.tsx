@@ -1,10 +1,17 @@
 import React from 'react';
 import { FlatList } from 'react-native';
 import MessageBubble from './MessageBubble';
-import { Message } from '../lib/chatStorage';
+
+// Legacy Message type for compatibility
+interface LegacyMessage {
+  id: string;
+  text: string;
+  role: 'user' | 'assistant';
+  timestamp: number;
+}
 
 interface ChatListProps {
-  messages: Message[];
+  messages: LegacyMessage[];
 }
 
 const ChatList: React.FC<ChatListProps> = ({ messages }) => {
