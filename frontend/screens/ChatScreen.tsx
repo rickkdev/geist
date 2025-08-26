@@ -1,9 +1,19 @@
-import React, { useState, useEffect } from 'react';
-import { SafeAreaView, View, Text, TouchableOpacity, Alert } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  SafeAreaView,
+  View,
+  Text,
+  TouchableOpacity,
+  Alert,
+  Animated,
+  Dimensions,
+} from 'react-native';
 import ChatList from '../components/ChatList';
 import InputBar from '../components/InputBar';
 import TypingIndicator from '../components/TypingIndicator';
 import CloudInferenceErrorBoundary from '../components/CloudInferenceErrorBoundary';
+import ChatDrawer from '../components/ChatDrawer';
+import HamburgerIcon from '../components/HamburgerIcon';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useLlama } from '../hooks/useLlama';
 import { useCloudInference } from '../hooks/useCloudInference';
@@ -12,11 +22,14 @@ import { Message } from '../lib/chatStorage';
 
 type InferenceMode = 'local' | 'cloud';
 
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const DRAWER_WIDTH = Math.min(288, SCREEN_WIDTH * 0.85);
+
 const ChatScreen: React.FC = () => {
   const { messages, addMessage, logChatHistoryForLLM } = useChatHistory();
   const { isReady, loading, error, downloadProgress, ask } = useLlama();
-  const { 
-    isInitialized: cloudInitialized, 
+  const {
+    isInitialized: cloudInitialized,
     isLoading: cloudLoading,
     isGenerating: cloudGenerating,
     error: cloudError,
@@ -26,13 +39,18 @@ const ChatScreen: React.FC = () => {
     rateLimitedUntil,
     ask: askCloud,
     clearError: clearCloudError,
-    initialize: initializeCloud
+    initialize: initializeCloud,
   } = useCloudInference({ autoInitialize: false });
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [streamingMessage, setStreamingMessage] = useState('');
   const [inferenceMode, setInferenceMode] = useState<InferenceMode>('local');
   const [showDropdown, setShowDropdown] = useState(false);
+  const [showDrawer, setShowDrawer] = useState(false);
+  const [currentChatId, setCurrentChatId] = useState<number | undefined>();
+
+  // Animation for sliding the app content
+  const slideAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     loadInferenceMode();
@@ -41,7 +59,7 @@ const ChatScreen: React.FC = () => {
   // Initialize cloud inference when mode changes to cloud
   useEffect(() => {
     if (inferenceMode === 'cloud' && !cloudInitialized && !cloudLoading) {
-      initializeCloud().catch(error => {
+      initializeCloud().catch((error) => {
         console.error('Auto-initialization failed:', error);
       });
     }
@@ -111,11 +129,11 @@ const ChatScreen: React.FC = () => {
         return;
       }
     }
-    
+
     // Check readiness based on inference mode
     const isInferenceReady = inferenceMode === 'local' ? isReady : cloudInitialized;
     const isCurrentlyGenerating = inferenceMode === 'local' ? isTyping : cloudGenerating;
-    
+
     if (!input.trim() || !isInferenceReady || isCurrentlyGenerating) return;
 
     const userMessage: Message = {
@@ -145,19 +163,19 @@ const ChatScreen: React.FC = () => {
       console.log('📊 Conversation length:', conversationHistory.length, 'messages');
 
       let replyText: string | undefined;
-      
+
       if (inferenceMode === 'cloud') {
         // Use cloud inference
-        const cloudMessages = conversationHistory.map(msg => ({
+        const cloudMessages = conversationHistory.map((msg) => ({
           role: msg.role as 'user' | 'assistant' | 'system',
-          content: msg.text
+          content: msg.text,
         }));
-        
+
         await askCloud(cloudMessages, (token: string) => {
           fullResponse += token;
           setStreamingMessage(fullResponse);
         });
-        
+
         replyText = fullResponse;
       } else {
         // Use local inference
@@ -184,21 +202,28 @@ const ChatScreen: React.FC = () => {
       console.error('💥 CHAT HANDLER:', inferenceMode, 'LLM request failed:', err);
 
       let errorText = `Sorry, I encountered an error processing your message${inferenceMode === 'cloud' ? ' (cloud inference)' : ' (local inference)'}.`;
-      
+
       // Handle cloud inference errors differently
       if (inferenceMode === 'cloud') {
         let fallbackMessage = '';
-        
+
         if (cloudError) {
           // Parse error type for better user messaging
           if (cloudError.includes('Network error') || cloudError.includes('fetch failed')) {
-            fallbackMessage = '🌐 Unable to reach cloud servers. Please check your internet connection and try again.';
+            fallbackMessage =
+              '🌐 Unable to reach cloud servers. Please check your internet connection and try again.';
           } else if (cloudError.includes('Rate limited') || cloudError.includes('429')) {
             fallbackMessage = '⏳ Cloud servers are busy. Please wait a moment and try again.';
           } else if (cloudError.includes('timeout')) {
-            fallbackMessage = '⏱️ Cloud request timed out. The servers may be overloaded. Please try again.';
-          } else if (cloudError.includes('500') || cloudError.includes('502') || cloudError.includes('503')) {
-            fallbackMessage = '🔧 Cloud servers are temporarily unavailable. Please try again in a few moments.';
+            fallbackMessage =
+              '⏱️ Cloud request timed out. The servers may be overloaded. Please try again.';
+          } else if (
+            cloudError.includes('500') ||
+            cloudError.includes('502') ||
+            cloudError.includes('503')
+          ) {
+            fallbackMessage =
+              '🔧 Cloud servers are temporarily unavailable. Please try again in a few moments.';
           } else {
             fallbackMessage = `💥 Cloud inference error: ${cloudError}`;
           }
@@ -212,14 +237,23 @@ const ChatScreen: React.FC = () => {
             errorText = `💥 Cloud inference failed: ${err.message}`;
           }
         }
-        
+
         // If we have streaming message, preserve it with context
         if (streamingMessage && streamingMessage.trim()) {
-          errorText = streamingMessage.trim() + '\n\n[⚠️ Response interrupted - ' + (fallbackMessage || 'Cloud connection lost') + ']';
+          errorText =
+            streamingMessage.trim() +
+            '\n\n[⚠️ Response interrupted - ' +
+            (fallbackMessage || 'Cloud connection lost') +
+            ']';
         }
-        
+
         // Add suggestion to switch to local mode for persistent issues
-        if (cloudError && (cloudError.includes('Network') || cloudError.includes('timeout') || cloudError.includes('500'))) {
+        if (
+          cloudError &&
+          (cloudError.includes('Network') ||
+            cloudError.includes('timeout') ||
+            cloudError.includes('500'))
+        ) {
           errorText += '\n\n💡 Consider switching to Local mode for offline use.';
         }
       } else {
@@ -247,7 +281,8 @@ const ChatScreen: React.FC = () => {
           };
         } else if (lastError && lastError.partialResponse && lastError.partialResponse.trim()) {
           console.log('🔄 CHAT HANDLER: Found partial response from error, using it');
-          errorText = lastError.partialResponse.trim() + '\n\n[Response was interrupted by an error]';
+          errorText =
+            lastError.partialResponse.trim() + '\n\n[Response was interrupted by an error]';
 
           // Store the partial response globally for developer inspection
           (global as any).__CHAT_LAST_PARTIAL = {
@@ -282,10 +317,47 @@ const ChatScreen: React.FC = () => {
     }
   };
 
+  // Handle drawer animation
+  useEffect(() => {
+    if (showDrawer) {
+      Animated.timing(slideAnim, {
+        toValue: DRAWER_WIDTH,
+        duration: 250,
+        useNativeDriver: true,
+      }).start();
+    } else {
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [showDrawer, slideAnim]);
+
+  const handleDrawerOpen = () => {
+    setShowDrawer(true);
+  };
+
+  const handleDrawerClose = () => {
+    setShowDrawer(false);
+  };
+
+  const handleChatSelect = (chatId: number) => {
+    setCurrentChatId(chatId);
+    // TODO: Load chat messages for the selected chat
+    handleDrawerClose();
+  };
+
+  const handleNewChat = () => {
+    setCurrentChatId(undefined);
+    // TODO: Create new chat and switch to it
+    handleDrawerClose();
+  };
+
   // Show loading state based on inference mode
   const isCurrentlyLoading = inferenceMode === 'local' ? loading : cloudLoading;
   const currentError = inferenceMode === 'local' ? error : cloudError;
-  
+
   if (isCurrentlyLoading || (inferenceMode === 'local' && loading)) {
     return (
       <SafeAreaView className="flex-1 bg-white">
@@ -294,8 +366,8 @@ const ChatScreen: React.FC = () => {
             {inferenceMode === 'cloud' && cloudLoading
               ? 'Initializing secure cloud connection...'
               : downloadProgress > 0 && downloadProgress < 100
-              ? `Downloading model... ${Math.round(downloadProgress)}%`
-              : 'Initializing AI model...'}
+                ? `Downloading model... ${Math.round(downloadProgress)}%`
+                : 'Initializing AI model...'}
           </Text>
         </View>
       </SafeAreaView>
@@ -333,166 +405,198 @@ const ChatScreen: React.FC = () => {
       fallback={(error, retry) => (
         <SafeAreaView className="flex-1 bg-white">
           <View className="flex-1 items-center justify-center p-5">
-            <Text className="text-lg font-semibold text-red-600 mb-3 text-center">
+            <Text className="mb-3 text-center text-lg font-semibold text-red-600">
               ☁️ Cloud Service Error
             </Text>
-            <Text className="text-gray-700 mb-4 text-center">
+            <Text className="mb-4 text-center text-gray-700">
               There was a problem with cloud inference. You can retry or switch to local AI.
             </Text>
-            <Text className="text-xs text-gray-500 mb-4 text-center">
-              {error.message}
-            </Text>
-            <TouchableOpacity
-              onPress={retry}
-              className="bg-blue-500 rounded-lg py-3 px-6 mb-3">
-              <Text className="text-white font-medium text-center">Retry Cloud AI</Text>
+            <Text className="mb-4 text-center text-xs text-gray-500">{error.message}</Text>
+            <TouchableOpacity onPress={retry} className="mb-3 rounded-lg bg-blue-500 px-6 py-3">
+              <Text className="text-center font-medium text-white">Retry Cloud AI</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => setInferenceMode('local')}
-              className="bg-gray-100 rounded-lg py-3 px-6">
-              <Text className="text-gray-700 font-medium text-center">Switch to Local AI</Text>
+              className="rounded-lg bg-gray-100 px-6 py-3">
+              <Text className="text-center font-medium text-gray-700">Switch to Local AI</Text>
             </TouchableOpacity>
           </View>
         </SafeAreaView>
-      )}
-    >
-      <SafeAreaView className="flex-1 bg-white">
-        {/* Header */}
-        <View className="relative border-b border-gray-200 px-4 py-3">
-        {/* Main Header Button - Clickable area that toggles dropdown */}
-        <TouchableOpacity
-          onPress={() => setShowDropdown(!showDropdown)}
-          className="flex-row items-center">
-          {/* App Name "Geist" - Black text that dims when dropdown is open */}
-          <Text
-            className="mr-2 text-lg font-semibold"
-            style={{
-              color: showDropdown ? 'rgba(0, 0, 0, 0.4)' : 'rgba(0, 0, 0, 1)',
-            }}>
-            Geist
-          </Text>
+      )}>
+      {/* Main App Content */}
+      <Animated.View
+        style={{
+          flex: 1,
+          transform: [{ translateX: slideAnim }],
+        }}>
+        <SafeAreaView className="flex-1 bg-white">
+          {/* Header */}
+          <View className="relative border-b border-gray-200 px-4 py-3">
+            {/* Header Row */}
+            <View className="flex-row items-center">
+              {/* Left side - Hamburger Menu */}
+              <TouchableOpacity onPress={handleDrawerOpen} className="-ml-2 mr-2 p-2">
+                <HamburgerIcon size={20} color="#374151" />
+              </TouchableOpacity>
 
-          {/* Current Mode Display - Shows "Local" or "Cloud" with status indicator */}
-          <View className="flex-row items-center mr-1">
-            <Text
-              className="text-sm mr-1"
-              style={{
-                color: showDropdown ? 'rgba(107, 114, 128, 0.4)' : 'rgba(107, 114, 128, 1)',
-              }}>
-              {inferenceMode === 'local' ? 'Local' : 'Cloud'}
-            </Text>
-            
-            {/* Connection Status Indicator */}
-            {inferenceMode === 'cloud' && (
-              <View className="flex-row items-center">
-                {connectionStatus === 'connected' && (
-                  <View className="w-2 h-2 bg-green-500 rounded-full" />
-                )}
-                {connectionStatus === 'connecting' && (
-                  <View className="w-2 h-2 bg-yellow-500 rounded-full animate-pulse" />
-                )}
-                {connectionStatus === 'error' && (
-                  <View className="w-2 h-2 bg-red-500 rounded-full" />
-                )}
-                {connectionStatus === 'rate_limited' && (
-                  <View className="w-2 h-2 bg-orange-500 rounded-full" />
-                )}
-                {connectionStatus === 'disconnected' && (
-                  <View className="w-2 h-2 bg-gray-400 rounded-full" />
-                )}
-                {isRetrying && (
-                  <Text className="ml-1 text-xs text-gray-500">
-                    ({retryAttempt}/3)
+              {/* Left side - Main Header Button - Clickable area that toggles dropdown */}
+              <TouchableOpacity
+                onPress={() => setShowDropdown(!showDropdown)}
+                className="flex-row items-center">
+                {/* App Name "Geist" - Black text that dims when dropdown is open */}
+                <Text
+                  className="mr-2 text-lg font-semibold"
+                  style={{
+                    color: showDropdown ? 'rgba(0, 0, 0, 0.4)' : 'rgba(0, 0, 0, 1)',
+                  }}>
+                  Geist
+                </Text>
+
+                {/* Current Mode Display - Shows "Local" or "Cloud" with status indicator */}
+                <View className="mr-1 flex-row items-center">
+                  <Text
+                    className="mr-1 text-sm"
+                    style={{
+                      color: showDropdown ? 'rgba(107, 114, 128, 0.4)' : 'rgba(107, 114, 128, 1)',
+                    }}>
+                    {inferenceMode === 'local' ? 'Local' : 'Cloud'}
                   </Text>
-                )}
-                {rateLimitedUntil && rateLimitedUntil > Date.now() && (
-                  <Text className="ml-1 text-xs text-orange-600">
-                    {Math.ceil((rateLimitedUntil - Date.now()) / 1000)}s
-                  </Text>
-                )}
-              </View>
+
+                  {/* Connection Status Indicator */}
+                  {inferenceMode === 'cloud' && (
+                    <View className="flex-row items-center">
+                      {connectionStatus === 'connected' && (
+                        <View className="h-2 w-2 rounded-full bg-green-500" />
+                      )}
+                      {connectionStatus === 'connecting' && (
+                        <View className="h-2 w-2 animate-pulse rounded-full bg-yellow-500" />
+                      )}
+                      {connectionStatus === 'error' && (
+                        <View className="h-2 w-2 rounded-full bg-red-500" />
+                      )}
+                      {connectionStatus === 'rate_limited' && (
+                        <View className="h-2 w-2 rounded-full bg-orange-500" />
+                      )}
+                      {connectionStatus === 'disconnected' && (
+                        <View className="h-2 w-2 rounded-full bg-gray-400" />
+                      )}
+                      {isRetrying && (
+                        <Text className="ml-1 text-xs text-gray-500">({retryAttempt}/3)</Text>
+                      )}
+                      {rateLimitedUntil && rateLimitedUntil > Date.now() && (
+                        <Text className="ml-1 text-xs text-orange-600">
+                          {Math.ceil((rateLimitedUntil - Date.now()) / 1000)}s
+                        </Text>
+                      )}
+                    </View>
+                  )}
+                </View>
+
+                {/* Dropdown Arrow - Right arrow "›" that rotates down when dropdown opens */}
+                <Text
+                  className="text-xs"
+                  style={{
+                    color: showDropdown ? 'rgba(107, 114, 128, 0.4)' : 'rgba(107, 114, 128, 1)',
+                    transform: showDropdown ? 'rotate(90deg)' : 'rotate(0deg)',
+                  }}>
+                  ›
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Dropdown Menu - Only visible when showDropdown is true */}
+            {showDropdown && (
+              <>
+                {/* Invisible Overlay - Covers entire screen to detect clicks outside dropdown */}
+                <TouchableOpacity
+                  onPress={() => setShowDropdown(false)}
+                  className="absolute inset-0 h-screen w-full"
+                  style={{ top: 0, left: -16, right: -16, bottom: -1000 }}
+                />
+
+                {/* Dropdown Container - White box with shadow containing menu options */}
+                <View className="absolute left-12 top-16 z-10 w-60 rounded-lg bg-white shadow-lg">
+                  {/* GPT-OSS Title */}
+                  <View className="border-b border-gray-100 px-4 py-3">
+                    <Text className="text-base font-medium text-black">GPT-OSS</Text>
+                  </View>
+
+                  {/* Cloud Mode Option - First menu item with checkmark if selected */}
+                  <TouchableOpacity
+                    onPress={() => handleModeSelect('cloud')}
+                    className="flex-row items-start border-b border-gray-100 px-4 py-3">
+                    {/* Checkmark for Cloud Mode - Shows "✓" if cloud mode is active */}
+                    <View className="mr-2 w-4 items-center pt-0.5">
+                      <Text className="text-base text-black">
+                        {inferenceMode === 'cloud' ? '✓' : ''}
+                      </Text>
+                    </View>
+                    <View className="flex-1">
+                      <Text className="text-base text-black">Cloud</Text>
+                      <Text className="text-sm text-gray-500">
+                        End-to-end encrypted and never stored, high quality.
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+
+                  {/* Local Mode Option - Second menu item with checkmark if selected */}
+                  <TouchableOpacity
+                    onPress={() => handleModeSelect('local')}
+                    className="flex-row items-start px-4 pb-4 pt-3">
+                    {/* Checkmark for Local Mode - Shows "✓" if local mode is active */}
+                    <View className="mr-2 w-4 items-center pt-0.5">
+                      <Text className="text-base text-black">
+                        {inferenceMode === 'local' ? '✓' : ''}
+                      </Text>
+                    </View>
+                    <View className="flex-1">
+                      <Text className="text-base text-black">Local</Text>
+                      <Text className="text-sm text-gray-500">
+                        LLM hosted on your phone, overall lower quality.
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                </View>
+              </>
             )}
           </View>
 
-          {/* Dropdown Arrow - Right arrow "›" that rotates down when dropdown opens */}
-          <Text
-            className="text-xs"
+          <View className="flex-1 pb-2">
+            <ChatList messages={displayMessages} />
+            {isTyping && !streamingMessage && <TypingIndicator />}
+          </View>
+          <InputBar
+            value={input}
+            onChangeText={setInput}
+            onSend={handleSend}
+            disabled={(inferenceMode === 'local' ? !isReady : false) || isTyping || cloudGenerating}
+          />
+        </SafeAreaView>
+
+        {/* Overlay for main content when drawer is open */}
+        {showDrawer && (
+          <View
             style={{
-              color: showDropdown ? 'rgba(107, 114, 128, 0.4)' : 'rgba(107, 114, 128, 1)',
-              transform: showDropdown ? 'rotate(90deg)' : 'rotate(0deg)',
-            }}>
-            ›
-          </Text>
-        </TouchableOpacity>
-
-        {/* Dropdown Menu - Only visible when showDropdown is true */}
-        {showDropdown && (
-          <>
-            {/* Invisible Overlay - Covers entire screen to detect clicks outside dropdown */}
-            <TouchableOpacity
-              onPress={() => setShowDropdown(false)}
-              className="absolute inset-0 h-screen w-full"
-              style={{ top: 0, left: -16, right: -16, bottom: -1000 }}
-            />
-
-            {/* Dropdown Container - White box with shadow containing menu options */}
-            <View className="absolute left-16 top-16 z-10 w-60 rounded-lg bg-white shadow-lg">
-              {/* GPT-OSS Title */}
-              <View className="border-b border-gray-100 px-4 py-3">
-                <Text className="text-base font-medium text-black">GPT-OSS</Text>
-              </View>
-
-              {/* Cloud Mode Option - First menu item with checkmark if selected */}
-              <TouchableOpacity
-                onPress={() => handleModeSelect('cloud')}
-                className="flex-row items-start border-b border-gray-100 px-4 py-3">
-                {/* Checkmark for Cloud Mode - Shows "✓" if cloud mode is active */}
-                <View className="mr-2 w-4 items-center pt-0.5">
-                  <Text className="text-base text-black">
-                    {inferenceMode === 'cloud' ? '✓' : ''}
-                  </Text>
-                </View>
-                <View className="flex-1">
-                  <Text className="text-base text-black">Cloud</Text>
-                  <Text className="text-sm text-gray-500">
-                    End-to-end encrypted and never stored, high quality.
-                  </Text>
-                </View>
-              </TouchableOpacity>
-
-              {/* Local Mode Option - Second menu item with checkmark if selected */}
-              <TouchableOpacity
-                onPress={() => handleModeSelect('local')}
-                className="flex-row items-start px-4 pb-4 pt-3">
-                {/* Checkmark for Local Mode - Shows "✓" if local mode is active */}
-                <View className="mr-2 w-4 items-center pt-0.5">
-                  <Text className="text-base text-black">
-                    {inferenceMode === 'local' ? '✓' : ''}
-                  </Text>
-                </View>
-                <View className="flex-1">
-                  <Text className="text-base text-black">Local</Text>
-                  <Text className="text-sm text-gray-500">
-                    LLM hosted on your phone, overall lower quality.
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            </View>
-          </>
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: 'rgba(0, 0, 0, 0.01)',
+              zIndex: 5,
+            }}
+          />
         )}
-      </View>
+      </Animated.View>
 
-      <View className="flex-1 pb-2">
-        <ChatList messages={displayMessages} />
-        {isTyping && !streamingMessage && <TypingIndicator />}
-      </View>
-      <InputBar
-        value={input}
-        onChangeText={setInput}
-        onSend={handleSend}
-        disabled={(inferenceMode === 'local' ? !isReady : false) || isTyping || cloudGenerating}
+      {/* Chat Drawer */}
+      <ChatDrawer
+        isVisible={showDrawer}
+        onClose={handleDrawerClose}
+        onChatSelect={handleChatSelect}
+        activeChatId={currentChatId}
+        onNewChat={handleNewChat}
       />
-      </SafeAreaView>
     </CloudInferenceErrorBoundary>
   );
 };
