@@ -615,16 +615,6 @@ const ChatScreen: React.FC = () => {
                   Geist
                 </Text>
 
-                {/* Chat Title - Show current chat title if available and not "New Chat" */}
-                {currentChat && currentChat.title && currentChat.title !== 'New Chat' && (
-                  <Text
-                    className="mr-2 text-sm text-gray-600"
-                    style={{
-                      color: showDropdown ? 'rgba(107, 114, 128, 0.4)' : 'rgba(107, 114, 128, 1)',
-                    }}>
-                    • {currentChat.title}
-                  </Text>
-                )}
 
                 {/* Current Mode Display - Shows "Local" or "Cloud" with status indicator */}
                 <View className="mr-1 flex-row items-center">
