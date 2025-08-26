@@ -77,7 +77,8 @@ export default function ChatDrawer({
   };
 
   const handleLongPress = (chat: ChatItem) => {
-    setShowActionMenu(chat.id);
+    // Temporarily disabled - skip showing action menu
+    // setShowActionMenu(chat.id);
   };
 
   const handleRename = async (chatId: number, newTitle: string) => {
