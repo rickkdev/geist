@@ -305,14 +305,23 @@ export const addMessage = async (
       if (role === 'user') {
         const chatResult = await tx.executeSql('SELECT title FROM chats WHERE id = ?', [chatId]);
 
-        if (chatResult.rows.length > 0 && chatResult.rows.item(0).title === 'New Chat') {
-          // Use first 6-10 words as title
-          const words = content.trim().split(/\s+/).slice(0, 10);
-          const newTitle = words.join(' ');
+        if (chatResult.rows.length > 0) {
+          const currentTitle = chatResult.rows.item(0).title;
+          // Check if title is "New Chat" or empty/null
+          if (currentTitle === 'New Chat' || !currentTitle || currentTitle.trim() === '') {
+            // Use first 6-10 words as title, truncate if too long
+            const words = content.trim().split(/\s+/).slice(0, 8);
+            let newTitle = words.join(' ');
+            
+            // Truncate if longer than 50 characters
+            if (newTitle.length > 50) {
+              newTitle = newTitle.substring(0, 47) + '...';
+            }
 
-          await tx.executeSql('UPDATE chats SET title = ? WHERE id = ?', [newTitle, chatId]);
+            await tx.executeSql('UPDATE chats SET title = ? WHERE id = ?', [newTitle, chatId]);
 
-          console.log(`✅ Auto-titled chat ${chatId}: "${newTitle}"`);
+            console.log(`✅ Auto-titled chat ${chatId}: "${newTitle}"`);
+          }
         }
       }
 

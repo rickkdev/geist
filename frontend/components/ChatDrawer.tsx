@@ -45,14 +45,14 @@ export default function ChatDrawer({
       // Animate in
       Animated.timing(translateX, {
         toValue: 0,
-        duration: 250,
+        duration: 200,
         useNativeDriver: true,
       }).start();
     } else {
-      // Animate out
+      // Animate out - faster for better responsiveness
       Animated.timing(translateX, {
         toValue: -DRAWER_WIDTH,
-        duration: 200,
+        duration: 150,
         useNativeDriver: true,
       }).start();
     }
@@ -68,8 +68,12 @@ export default function ChatDrawer({
   };
 
   const handleChatPress = (chatId: number) => {
-    onChatSelect(chatId);
+    // Close drawer first, then select chat after animation completes
     onClose();
+    // Wait for the close animation to complete before selecting chat
+    setTimeout(() => {
+      onChatSelect(chatId);
+    }, 200);
   };
 
   const handleLongPress = (chat: ChatItem) => {

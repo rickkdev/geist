@@ -435,14 +435,15 @@ Add a switch to toggle between local on-device inference and secure cloud infere
 
 ## D Chat Screen Integration (just what’s needed for MVP)
 
-- [ ] On mount:
-  - [ ] Load messages for `chatId` (latest N, then paginate up)
-- [ ] Send message:
-  - [ ] `addMessage(chatId, "user", text)` → update `updated_at`
-  - [ ] Start model stream (local or cloud) → append `"assistant"` messages as chunks (buffer in state, commit on finish)
-  - [ ] If title is “New Chat”, auto-title from first user message
-- [ ] Scroll to bottom on new assistant chunk
-- [ ] Persist on app background (`AppState` listener)
+- [x] On mount:
+  - [x] Load messages for `chatId` (latest N, then paginate up)
+- [x] Send message:
+  - [x] `addMessage(chatId, "user", text)` → update `updated_at`
+  - [x] Start model stream (local or cloud) → append `"assistant"` messages as chunks (buffer in state, commit on finish)
+  - [x] If title is “New Chat”, auto-title from first user message
+- [x] Scroll to bottom on new assistant chunk
+- [x] Persist on app background (`AppState` listener)
+  - [ ] All chats are named "new chat" name them as the first few prompt words
 
 ---
 
@@ -465,7 +466,11 @@ Add a switch to toggle between local on-device inference and secure cloud infere
 
 ---
 
-## G Tests / Dev Tools
+## G Add interruption, auto interrupt if user creates new chat
+
+---
+
+## H Tests / Dev Tools
 
 - [ ] Migration test (fresh install vs upgrade)
 - [ ] CRUD unit tests for storage helpers

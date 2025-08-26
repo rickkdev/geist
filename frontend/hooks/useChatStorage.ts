@@ -8,7 +8,12 @@ import {
   getChats, 
   addMessage as addMessageToChat,
   initializeDatabase,
-  isDatabaseInitialized
+  isDatabaseInitialized,
+  getChats as getChatsFromDB,
+  deleteChat as deleteChatFromDB,
+  renameChat as renameChatFromDB,
+  pinChat as pinChatFromDB,
+  archiveChat as archiveChatFromDB
 } from '../lib/chatStorage';
 
 // Legacy Message type for backward compatibility
@@ -175,6 +180,47 @@ export const useChatStorage = (chatId?: number) => {
     console.log('='.repeat(70));
   };
 
+  // Additional functions for ChatDrawer integration
+  const getChats = async (options: { includeArchived?: boolean } = {}) => {
+    return await getChatsFromDB(options);
+  };
+
+  const deleteChat = async (chatId: number) => {
+    await deleteChatFromDB(chatId);
+    // If we're deleting the current chat, clear the current chat
+    if (chatId === currentChatId) {
+      setCurrentChatId(undefined);
+      setMessages([]);
+      setCurrentChat(null);
+    }
+  };
+
+  const renameChat = async (chatId: number, title: string) => {
+    await renameChatFromDB(chatId, title);
+    // Update current chat if it's the one being renamed
+    if (chatId === currentChatId && currentChat) {
+      setCurrentChat({ ...currentChat, title });
+    }
+  };
+
+  const pinChat = async (chatId: number, pinned: boolean) => {
+    await pinChatFromDB(chatId, pinned);
+    // Update current chat if it's the one being pinned
+    if (chatId === currentChatId && currentChat) {
+      setCurrentChat({ ...currentChat, pinned: pinned ? 1 : 0 });
+    }
+  };
+
+  const archiveChat = async (chatId: number, archived: boolean) => {
+    await archiveChatFromDB(chatId, archived);
+    // If we're archiving the current chat, clear the current chat
+    if (chatId === currentChatId && archived) {
+      setCurrentChatId(undefined);
+      setMessages([]);
+      setCurrentChat(null);
+    }
+  };
+
   return {
     messages,
     currentChat,
@@ -184,5 +230,11 @@ export const useChatStorage = (chatId?: number) => {
     createNewChat,
     clearMessages,
     logChatHistoryForLLM,
+    // ChatDrawer functions
+    getChats,
+    deleteChat,
+    renameChat,
+    pinChat,
+    archiveChat,
   };
 };

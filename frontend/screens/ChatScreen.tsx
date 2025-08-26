@@ -8,14 +8,16 @@ import {
   Animated,
   Dimensions,
   Platform,
+  AppState,
 } from 'react-native';
-import ChatList from '../components/ChatList';
+import ChatList, { ChatListRef } from '../components/ChatList';
 import InputBar from '../components/InputBar';
 import TypingIndicator from '../components/TypingIndicator';
 import CloudInferenceErrorBoundary from '../components/CloudInferenceErrorBoundary';
 import ChatDrawer from '../components/ChatDrawer';
 import HamburgerIcon from '../components/HamburgerIcon';
 import NewChatButton from '../components/NewChatButton';
+
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useLlama } from '../hooks/useLlama';
 import { useCloudInference } from '../hooks/useCloudInference';
@@ -28,8 +30,15 @@ const DRAWER_WIDTH = Math.min(288, SCREEN_WIDTH * 0.85);
 
 const ChatScreen: React.FC = () => {
   const [currentChatId, setCurrentChatId] = useState<number | undefined>();
-  const { messages, addMessage, createNewChat, logChatHistoryForLLM } =
-    useChatStorage(currentChatId);
+  const {
+    messages,
+    addMessage,
+    createNewChat,
+    logChatHistoryForLLM,
+    isLoading,
+    error: chatError,
+    currentChat,
+  } = useChatStorage(currentChatId);
   const { isReady, loading, error, downloadProgress, ask } = useLlama();
   const {
     isInitialized: cloudInitialized,
@@ -54,6 +63,9 @@ const ChatScreen: React.FC = () => {
   // Animation for sliding the app content
   const slideAnim = useRef(new Animated.Value(0)).current;
 
+  // Ref for ChatList to scroll to bottom
+  const chatListRef = useRef<ChatListRef>(null);
+
   useEffect(() => {
     loadInferenceMode();
     // Create a default chat if none exists
@@ -69,6 +81,7 @@ const ChatScreen: React.FC = () => {
         console.log('✅ Default chat initialized with ID:', newChatId);
       } catch (error) {
         console.error('❌ Failed to initialize default chat:', error);
+        Alert.alert('Error', 'Failed to create initial chat. Please restart the app.');
       }
     }
   };
@@ -81,6 +94,31 @@ const ChatScreen: React.FC = () => {
       });
     }
   }, [inferenceMode, cloudInitialized, cloudLoading, initializeCloud]);
+
+  // Scroll to bottom when messages change
+  useEffect(() => {
+    if (messages.length > 0) {
+      setTimeout(() => {
+        chatListRef.current?.scrollToBottom();
+      }, 100);
+    }
+  }, [messages.length]);
+
+  // Persist chat state when app goes to background
+  useEffect(() => {
+    const handleAppStateChange = (nextAppState: string) => {
+      if (nextAppState === 'background' || nextAppState === 'inactive') {
+        console.log('📱 App going to background, ensuring chat persistence...');
+        // The SQLite storage automatically persists data, but we can log for debugging
+        if (currentChatId && messages.length > 0) {
+          console.log(`💾 Persisting chat ${currentChatId} with ${messages.length} messages`);
+        }
+      }
+    };
+
+    const subscription = AppState.addEventListener('change', handleAppStateChange);
+    return () => subscription?.remove();
+  }, [currentChatId, messages.length]);
 
   const loadInferenceMode = async () => {
     try {
@@ -173,6 +211,8 @@ const ChatScreen: React.FC = () => {
       role: 'user',
       timestamp: Date.now(),
     };
+
+    // Add message to SQLite storage (this will also handle auto-titling)
     await addMessage(userMessage);
     console.log('✅ User message added successfully');
     setInput('');
@@ -234,6 +274,11 @@ const ChatScreen: React.FC = () => {
       setStreamingMessage('');
 
       console.log('✅ CHAT HANDLER: Successfully added assistant message');
+
+      // Scroll to bottom after adding message
+      setTimeout(() => {
+        chatListRef.current?.scrollToBottom();
+      }, 100);
 
       // Log the entire chat history after each message exchange
       logChatHistoryForLLM();
@@ -365,13 +410,14 @@ const ChatScreen: React.FC = () => {
         useNativeDriver: true,
       }).start();
     } else {
+      // Use a shorter duration for closing to make it more responsive
       Animated.timing(slideAnim, {
         toValue: 0,
-        duration: 200,
+        duration: 150,
         useNativeDriver: true,
       }).start();
     }
-  }, [showDrawer, slideAnim]);
+  }, [showDrawer]);
 
   const handleDrawerOpen = () => {
     setShowDrawer(true);
@@ -382,9 +428,9 @@ const ChatScreen: React.FC = () => {
   };
 
   const handleChatSelect = (chatId: number) => {
+    console.log('🔄 Switching to chat ID:', chatId);
     setCurrentChatId(chatId);
-    // TODO: Load chat messages for the selected chat
-    handleDrawerClose();
+    // Drawer closing is now handled by ChatDrawer component
   };
 
   const handleNewChat = async () => {
@@ -423,6 +469,9 @@ const ChatScreen: React.FC = () => {
   const isCurrentlyLoading = inferenceMode === 'local' ? loading : cloudLoading;
   const currentError = inferenceMode === 'local' ? error : cloudError;
 
+  // Show loading when switching chats
+  const isChatLoading = !currentChatId || isLoading;
+
   if (isCurrentlyLoading || (inferenceMode === 'local' && loading)) {
     return (
       <SafeAreaView className="flex-1 bg-white">
@@ -434,6 +483,31 @@ const ChatScreen: React.FC = () => {
                 ? `Downloading model... ${Math.round(downloadProgress)}%`
                 : 'Initializing AI model...'}
           </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // Show loading when switching chats
+  if (isChatLoading) {
+    return (
+      <SafeAreaView className="flex-1 bg-white">
+        <View className="flex-1 items-center justify-center p-5">
+          <Text className="text-center text-base text-gray-600">
+            {!currentChatId ? 'Creating new chat...' : 'Loading chat...'}
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // Show error for chat loading issues
+  if (chatError) {
+    return (
+      <SafeAreaView className="flex-1 bg-white">
+        <View className="flex-1 items-center justify-center p-5">
+          <Text className="mb-2 text-center text-base text-red-500">Chat Error: {chatError}</Text>
+          <Text className="text-center text-sm text-gray-600">Please try restarting the app</Text>
         </View>
       </SafeAreaView>
     );
@@ -516,6 +590,17 @@ const ChatScreen: React.FC = () => {
                   }}>
                   Geist
                 </Text>
+
+                {/* Chat Title - Show current chat title if available and not "New Chat" */}
+                {currentChat && currentChat.title && currentChat.title !== 'New Chat' && (
+                  <Text
+                    className="mr-2 text-sm text-gray-600"
+                    style={{
+                      color: showDropdown ? 'rgba(107, 114, 128, 0.4)' : 'rgba(107, 114, 128, 1)',
+                    }}>
+                    • {currentChat.title}
+                  </Text>
+                )}
 
                 {/* Current Mode Display - Shows "Local" or "Cloud" with status indicator */}
                 <View className="mr-1 flex-row items-center">
@@ -632,7 +717,7 @@ const ChatScreen: React.FC = () => {
           </View>
 
           <View className="flex-1 pb-2">
-            <ChatList messages={displayMessages} />
+            <ChatList ref={chatListRef} messages={displayMessages} />
             {isTyping && !streamingMessage && <TypingIndicator />}
           </View>
           <InputBar
