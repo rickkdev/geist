@@ -53,51 +53,23 @@ export const DebugLog = {
 
   // Print all available debug data
   printAll() {
-    console.log('🔍 DEBUG LOG SUMMARY');
-    console.log('='.repeat(50));
     
     const lastResponse = this.getLastResponse();
     if (lastResponse) {
-      console.log('✅ Last Successful Response:');
-      console.log(`   Duration: ${lastResponse.duration}ms`);
-      console.log(`   Tokens: ${lastResponse.tokenCount}`);
-      console.log(`   Length: ${lastResponse.response?.length || 0} chars`);
-      console.log(`   Time: ${lastResponse.timestamp}`);
     }
 
     const lastTimeout = this.getLastTimeout();
     if (lastTimeout) {
-      console.log('⏰ Last Timeout:');
-      console.log(`   Duration: ${lastTimeout.duration}ms`);
-      console.log(`   Tokens: ${lastTimeout.tokenCount}`);
-      console.log(`   Partial: ${lastTimeout.partialResponse?.length || 0} chars`);
-      console.log(`   Time: ${lastTimeout.timestamp}`);
     }
 
     const lastError = this.getLastLlamaError();
     if (lastError) {
-      console.log('❌ Last LLM Error:');
-      console.log(`   Duration: ${lastError.duration}ms`);
-      console.log(`   Tokens: ${lastError.tokenCount}`);
-      console.log(`   Error: ${lastError.error?.message || 'Unknown'}`);
-      console.log(`   Time: ${lastError.timestamp}`);
     }
 
     const chatHistory = this.getChatHistory();
     if (chatHistory) {
-      console.log('💬 Chat History:');
-      console.log(`   Messages: ${chatHistory.messageCount}`);
-      console.log(`   Last Update: ${chatHistory.timestamp}`);
     }
 
-    console.log('='.repeat(50));
-    console.log('💡 Access individual logs:');
-    console.log('   DebugLog.getLastResponse()');
-    console.log('   DebugLog.getLastTimeout()');
-    console.log('   DebugLog.getLastLlamaError()');
-    console.log('   DebugLog.getLastChatError()');
-    console.log('   DebugLog.getLastPartialChat()');
-    console.log('   DebugLog.getChatHistory()');
   },
 
   // Clear all debug data
@@ -108,12 +80,10 @@ export const DebugLog = {
     delete (global as any).__CHAT_LAST_ERROR;
     delete (global as any).__CHAT_LAST_PARTIAL;
     delete (global as any).__CHAT_HISTORY;
-    console.log('🧹 Debug logs cleared');
   }
 };
 
 // Make DebugLog available globally in development
 if (__DEV__) {
   (global as any).DebugLog = DebugLog;
-  console.log('🔧 DebugLog available globally. Type "DebugLog.printAll()" in developer tools.');
 }

@@ -9,11 +9,9 @@ export async function downloadModel(onProgress?: (progress: number) => void): Pr
   // Check if model already exists
   const exists = await RNFS.exists(modelPath);
   if (exists) {
-    console.log('Model already exists at:', modelPath);
     return modelPath;
   }
 
-  console.log('Downloading model to:', modelPath);
 
   try {
     const downloadResult = await RNFS.downloadFile({
@@ -28,13 +26,11 @@ export async function downloadModel(onProgress?: (progress: number) => void): Pr
     }).promise;
 
     if (downloadResult.statusCode === 200) {
-      console.log('Model downloaded successfully');
       return modelPath;
     } else {
       throw new Error(`Download failed with status: ${downloadResult.statusCode}`);
     }
   } catch (error) {
-    console.error('Model download failed:', error);
     throw error;
   }
 }
@@ -50,6 +46,5 @@ export async function deleteModel(): Promise<void> {
   const exists = await RNFS.exists(modelPath);
   if (exists) {
     await RNFS.unlink(modelPath);
-    console.log('Model deleted');
   }
 }

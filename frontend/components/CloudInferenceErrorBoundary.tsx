@@ -23,12 +23,8 @@ class CloudInferenceErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('CloudInferenceErrorBoundary caught an error:', error, errorInfo);
-    
     // Track cloud inference specific errors
     if (error.message.includes('cloud') || error.message.includes('HPKE') || error.message.includes('router')) {
-      console.log('🔴 Cloud inference error detected:', error.message);
-      
       // Log to global for debugging
       (global as any).__CLOUD_INFERENCE_ERROR = {
         error: error.message,
@@ -84,7 +80,6 @@ class CloudInferenceErrorBoundary extends Component<Props, State> {
               <TouchableOpacity
                 onPress={() => {
                   // This would ideally trigger a mode switch to local
-                  console.log('🔄 Suggestion: Switch to local mode');
                 }}
                 className="bg-gray-100 rounded-lg py-3 px-6"
               >

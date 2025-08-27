@@ -114,11 +114,8 @@ async def chat_endpoint(request: Request, chat_request: ChatRequest):
 
     try:
         # Decrypt the request using HPKE
-        logging.info(f"Decrypting request {chat_request.request_id}")
+        logging.info(f"Processing chat request {chat_request.request_id}")
         decrypted_payload = hpke_service.decrypt_request(chat_request)
-        logging.info(
-            f"Decrypted payload: {decrypted_payload.messages[0]['content'][:50]}..."
-        )
 
         # Convert decrypted payload to inference request with parameter guardrails
         inference_request = InferenceRequest(
@@ -133,9 +130,6 @@ async def chat_endpoint(request: Request, chat_request: ChatRequest):
         async def event_stream():
             chunk_sequence = 0
             try:
-                logging.info(
-                    f"Starting encrypted streaming for request {chat_request.request_id}"
-                )
 
                 # Stream tokens from new inference service with SSE parsing
                 async for token in inference_service.stream_inference(
@@ -144,9 +138,6 @@ async def chat_endpoint(request: Request, chat_request: ChatRequest):
                     # Check if client is still connected (if cancellation is enabled)
                     if settings.ENABLE_CLIENT_DISCONNECT_CANCELLATION:
                         if await request.is_disconnected():
-                            logging.info(
-                                f"Client disconnected for request {chat_request.request_id}, cancelling stream"
-                            )
                             break
 
                     # Per-chunk HPKE encryption - encrypt each token individually
@@ -154,7 +145,6 @@ async def chat_endpoint(request: Request, chat_request: ChatRequest):
                     encrypted_chunk = hpke_service.encrypt_chunk(
                         token, client_pubkey, chunk_sequence
                     )
-                    logging.debug(f"Encrypted token {chunk_sequence}: {token[:30]}...")
 
                     # Send encrypted chunk as SSE event
                     yield {"data": encrypted_chunk, "event": "chunk"}
@@ -170,7 +160,6 @@ async def chat_endpoint(request: Request, chat_request: ChatRequest):
 
             except asyncio.TimeoutError as e:
                 circuit_breaker.record_failure()
-                logging.warning(f"Request {chat_request.request_id} timeout: {e}")
                 yield {"data": "Request timeout", "event": "error"}
             except Exception as e:
                 circuit_breaker.record_failure()
@@ -211,8 +200,7 @@ async def inference_endpoint(request: Request, inference_request: InferenceReque
         )
 
     try:
-        logging.info(f"Starting inference for request {inference_request.request_id}")
-        logging.debug(f"Message: {inference_request.messages[0]['content'][:50]}...")
+        logging.info(f"Processing inference request {inference_request.request_id}")
 
         # Create streaming generator
         async def token_stream():
@@ -225,9 +213,6 @@ async def inference_endpoint(request: Request, inference_request: InferenceReque
                     # Check if client is still connected
                     if settings.ENABLE_CLIENT_DISCONNECT_CANCELLATION:
                         if await request.is_disconnected():
-                            logging.info(
-                                f"Client disconnected for request {inference_request.request_id}"
-                            )
                             break
 
                     # Yield token as SSE event
@@ -241,7 +226,6 @@ async def inference_endpoint(request: Request, inference_request: InferenceReque
 
             except asyncio.TimeoutError as e:
                 circuit_breaker.record_failure()
-                logging.warning(f"Request {inference_request.request_id} timeout: {e}")
                 yield {"data": "Request timeout", "event": "error"}
             except Exception as e:
                 circuit_breaker.record_failure()
@@ -316,13 +300,8 @@ async def chat_debug_endpoint(request: Request, chat_request: ChatRequest):
     Debug version of chat endpoint to isolate issues.
     """
     try:
-        logging.info(f"DEBUG: Received request {chat_request.request_id}")
-
         # Test HPKE decryption
         decrypted_payload = hpke_service.decrypt_request(chat_request)
-        logging.info(
-            f"DEBUG: Decrypted successfully: {decrypted_payload.messages[0]['content']}"
-        )
 
         # Return simple response instead of streaming
         return JSONResponse(
@@ -335,7 +314,7 @@ async def chat_debug_endpoint(request: Request, chat_request: ChatRequest):
         )
 
     except Exception as e:
-        logging.error(f"DEBUG: Error in chat debug: {type(e).__name__}: {e}")
+        logging.error(f"Chat debug endpoint error: {type(e).__name__}")
         return JSONResponse(
             status_code=500, content={"error": str(e), "type": type(e).__name__}
         )

@@ -45,9 +45,6 @@ class InferenceClient:
                         ),
                     )
                 else:
-                    logging.warning(
-                        f"UNIX socket {socket_path} not found - inference will be unavailable"
-                    )
                     self.client = None
             else:
                 raise ValueError("UNIX socket path not configured")
@@ -89,7 +86,6 @@ class InferenceClient:
                     ssl_context.verify_mode = ssl.CERT_NONE
 
                 client_kwargs["verify"] = ssl_context
-                logging.info("mTLS enabled for inference client")
 
             self.client = httpx.AsyncClient(**client_kwargs)
 
@@ -154,9 +150,6 @@ class InferenceClient:
                     # Check request budget timeout
                     current_time = time.time()
                     if current_time > request_deadline:
-                        logging.warning(
-                            f"Request {request_id} exceeded budget timeout of {budget_timeout}s"
-                        )
                         raise asyncio.TimeoutError("Request budget exceeded")
 
                     if line.startswith("data: "):

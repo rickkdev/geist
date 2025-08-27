@@ -54,7 +54,6 @@ class HealthMonitor:
         # Start periodic health checks
         if endpoints:
             self.health_check_task = asyncio.create_task(self._periodic_health_check())
-            logging.info(f"Started health monitoring for {len(endpoints)} endpoints")
 
     async def shutdown(self):
         """Stop health monitoring and cleanup."""
@@ -87,7 +86,6 @@ class HealthMonitor:
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logging.error(f"Health check error: {e}")
                 await asyncio.sleep(self.settings.HEALTH_CHECK_INTERVAL_SECONDS)
 
     async def _check_all_nodes(self):
@@ -115,7 +113,6 @@ class HealthMonitor:
                 ):
                     node.status = NodeStatus.HEALTHY
                     self.healthy_nodes.add(endpoint)
-                    logging.info(f"Node {endpoint} marked as healthy")
 
             else:
                 node.consecutive_successes = 0
@@ -128,13 +125,11 @@ class HealthMonitor:
                 ):
                     node.status = NodeStatus.UNHEALTHY
                     self.healthy_nodes.discard(endpoint)
-                    logging.warning(f"Node {endpoint} marked as unhealthy")
 
         except Exception as e:
             node.consecutive_successes = 0
             node.consecutive_failures += 1
             node.last_error = str(e)
-            logging.error(f"Health check failed for {endpoint}: {e}")
 
         node.last_check = time.time()
 
@@ -170,7 +165,6 @@ class HealthMonitor:
                 return response.status_code == 200
 
         except Exception as e:
-            logging.debug(f"Health check failed for {endpoint}: {e}")
             return False
 
     async def get_healthy_endpoint(self) -> str:

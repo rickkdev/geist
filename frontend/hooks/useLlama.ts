@@ -38,13 +38,10 @@ export function useLlama(): UseLlamaReturn {
       let modelPath = await getModelPath();
 
       if (!modelPath) {
-        console.log('Model not found, downloading...');
         modelPath = await downloadModel((progress) => {
           setDownloadProgress(progress);
         });
       }
-
-      console.log('Initializing Llama with model at:', modelPath);
 
       await initializeLlama({
         modelPath,
@@ -58,7 +55,6 @@ export function useLlama(): UseLlamaReturn {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error';
       setError(errorMessage);
-      console.error('Failed to initialize Llama:', err);
     } finally {
       setLoading(false);
     }
@@ -78,7 +74,6 @@ export function useLlama(): UseLlamaReturn {
       currentRequestRef.current = {
         interrupt: () => {
           interrupted = true;
-          console.log('🛑 Local inference interrupted by user');
         }
       };
 
@@ -91,7 +86,6 @@ export function useLlama(): UseLlamaReturn {
         } else {
           // Try simple format first for better compatibility with DeepSeek
           formattedPrompt = formatPromptSimple(messages);
-          console.log('Using simple prompt format for better model compatibility');
         }
 
         // Wrap onToken to check for interruption
@@ -110,7 +104,6 @@ export function useLlama(): UseLlamaReturn {
         return response;
       } catch (err) {
         if (interrupted) {
-          console.log('✅ Local inference interruption confirmed');
           // Don't set error state for interruptions
           throw new Error('Generation interrupted');
         }
@@ -145,7 +138,7 @@ export function useLlama(): UseLlamaReturn {
 
     return () => {
       if (getLlamaContext()) {
-        releaseLlama().catch(console.error);
+        releaseLlama().catch(() => {});
       }
     };
   }, [initialize]);

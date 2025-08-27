@@ -26,7 +26,7 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ onBack }) => {
         setInferenceMode(savedMode);
       }
     } catch (error) {
-      console.error('Failed to load inference mode:', error);
+      // Failed to load inference mode
     } finally {
       setLoading(false);
     }
@@ -44,7 +44,6 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ onBack }) => {
         [{ text: 'OK' }]
       );
     } catch (error) {
-      console.error('Failed to save inference mode:', error);
       Alert.alert('Error', 'Failed to save settings. Please try again.');
     }
   };

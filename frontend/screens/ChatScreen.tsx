@@ -22,6 +22,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useLlama } from '../hooks/useLlama';
 import { useCloudInference } from '../hooks/useCloudInference';
 import { useChatStorage, LegacyMessage } from '../hooks/useChatStorage';
+import MinimalLogger from '../lib/minimalLogger';
 
 type InferenceMode = 'local' | 'cloud';
 
@@ -79,18 +80,14 @@ const ChatScreen: React.FC = () => {
       const savedChatId = await AsyncStorage.getItem('current_chat_id');
       if (savedChatId) {
         const chatId = parseInt(savedChatId);
-        console.log('🔄 Restoring last active chat:', chatId);
         setCurrentChatId(chatId);
         return;
       }
 
       // If no saved chat, create a new one only if needed
-      console.log('🔄 No previous chat found, initializing default chat...');
       const newChatId = await createNewChat();
       setCurrentChatId(newChatId);
-      console.log('✅ Default chat initialized with ID:', newChatId);
     } catch (error) {
-      console.error('❌ Failed to initialize chat:', error);
       Alert.alert('Error', 'Failed to initialize chat. Please restart the app.');
     }
   };
@@ -101,9 +98,8 @@ const ChatScreen: React.FC = () => {
       if (currentChatId) {
         try {
           await AsyncStorage.setItem('current_chat_id', currentChatId.toString());
-          console.log('💾 Saved current chat ID to storage:', currentChatId);
         } catch (error) {
-          console.error('❌ Failed to save chat ID to storage:', error);
+          // Failed to save chat ID to storage
         }
       }
     };
@@ -115,7 +111,7 @@ const ChatScreen: React.FC = () => {
   useEffect(() => {
     if (inferenceMode === 'cloud' && !cloudInitialized && !cloudLoading) {
       initializeCloud().catch((error) => {
-        console.error('Auto-initialization failed:', error);
+        // Auto-initialization failed
       });
     }
   }, [inferenceMode, cloudInitialized, cloudLoading, initializeCloud]);
@@ -133,11 +129,7 @@ const ChatScreen: React.FC = () => {
   useEffect(() => {
     const handleAppStateChange = (nextAppState: string) => {
       if (nextAppState === 'background' || nextAppState === 'inactive') {
-        console.log('📱 App going to background, ensuring chat persistence...');
-        // The SQLite storage automatically persists data, but we can log for debugging
-        if (currentChatId && messages.length > 0) {
-          console.log(`💾 Persisting chat ${currentChatId} with ${messages.length} messages`);
-        }
+        // The SQLite storage automatically persists data
       }
     };
 
@@ -152,7 +144,7 @@ const ChatScreen: React.FC = () => {
         setInferenceMode(savedMode);
       }
     } catch (error) {
-      console.error('Failed to load inference mode:', error);
+      // Failed to load inference mode
     }
   };
 
@@ -170,7 +162,6 @@ const ChatScreen: React.FC = () => {
         );
       }
     } catch (error) {
-      console.error('Failed to save inference mode:', error);
       Alert.alert('Error', 'Failed to save settings. Please try again.');
     }
   };
@@ -202,12 +193,10 @@ const ChatScreen: React.FC = () => {
   const handleSend = async () => {
     // Ensure we have an active chat
     if (!currentChatId) {
-      console.log('⚠️ No active chat, creating one...');
       try {
         const newChatId = await createNewChat();
         setCurrentChatId(newChatId);
       } catch (error) {
-        console.error('❌ Failed to create chat for message:', error);
         Alert.alert('Error', 'Failed to create chat. Please try again.');
         return;
       }
@@ -218,7 +207,6 @@ const ChatScreen: React.FC = () => {
       try {
         await initializeCloud();
       } catch (error) {
-        console.error('Failed to initialize cloud inference:', error);
         return;
       }
     }
@@ -229,7 +217,6 @@ const ChatScreen: React.FC = () => {
 
     if (!input.trim() || !isInferenceReady || isCurrentlyGenerating) return;
 
-    console.log('📝 Adding user message to chat ID:', currentChatId);
     const userMessage: LegacyMessage = {
       id: Date.now().toString(),
       text: input,
@@ -239,7 +226,6 @@ const ChatScreen: React.FC = () => {
 
     // Add message to SQLite storage (this will also handle auto-titling)
     await addMessage(userMessage);
-    console.log('✅ User message added successfully');
     setInput('');
     setIsTyping(true);
     setStreamingMessage('');
@@ -255,9 +241,6 @@ const ChatScreen: React.FC = () => {
 
       // Pass the entire conversation history including the new user message
       const conversationHistory = [...messages, userMessage];
-
-      console.log('🎯 CHAT HANDLER: Starting', inferenceMode, 'LLM request');
-      console.log('📊 Conversation length:', conversationHistory.length, 'messages');
 
       let replyText: string | undefined;
 
@@ -298,10 +281,11 @@ const ChatScreen: React.FC = () => {
           timestamp: Date.now(),
         };
         await addMessage(assistantMessage);
+        
+        // Log the completed conversation
+        MinimalLogger.logChatSession(userMessage.text, replyText || fullResponse, inferenceMode);
       }
       setStreamingMessage('');
-
-      console.log('✅ CHAT HANDLER: Successfully added assistant message');
 
       // Scroll to bottom after adding message
       setTimeout(() => {
@@ -315,7 +299,6 @@ const ChatScreen: React.FC = () => {
       const wasInterrupted = err?.message?.toLowerCase().includes('interrupted');
       
       if (wasInterrupted) {
-        console.log('✅ Generation was interrupted by user');
         // Save any partial response we have
         if (streamingMessage && streamingMessage.trim()) {
           const assistantMessage: LegacyMessage = {
@@ -325,14 +308,14 @@ const ChatScreen: React.FC = () => {
             timestamp: Date.now(),
           };
           await addMessage(assistantMessage);
+          
+          // Log the interrupted conversation
+          MinimalLogger.logChatSession(userMessage.text, streamingMessage.trim() + '\n\n[Response interrupted]', inferenceMode);
         }
         setStreamingMessage('');
         setIsTyping(false);
         return;
       }
-
-      // Only log as error if it wasn't an interruption
-      console.error('💥 CHAT HANDLER:', inferenceMode, 'LLM request failed:', err);
 
       let errorText = `Sorry, I encountered an error processing your message${inferenceMode === 'cloud' ? ' (cloud inference)' : ' (local inference)'}.`;
 
@@ -400,8 +383,6 @@ const ChatScreen: React.FC = () => {
           partialResponse.partialResponse &&
           partialResponse.partialResponse.trim()
         ) {
-          console.log('🔄 CHAT HANDLER: Found partial response from timeout, using it');
-          console.log('Partial response length:', partialResponse.partialResponse.length);
           errorText =
             partialResponse.partialResponse.trim() + '\n\n[Response was cut short due to timeout]';
 
@@ -413,7 +394,6 @@ const ChatScreen: React.FC = () => {
             reason: 'timeout',
           };
         } else if (lastError && lastError.partialResponse && lastError.partialResponse.trim()) {
-          console.log('🔄 CHAT HANDLER: Found partial response from error, using it');
           errorText =
             lastError.partialResponse.trim() + '\n\n[Response was interrupted by an error]';
 
@@ -435,9 +415,11 @@ const ChatScreen: React.FC = () => {
         timestamp: Date.now(),
       };
       await addMessage(errorMessage);
+      
+      // Log the error conversation
+      MinimalLogger.logChatSession(userMessage.text, errorText, inferenceMode);
 
       // Log error details for debugging
-      console.error('🔍 CHAT HANDLER: Error details logged to global.__CHAT_LAST_ERROR');
       (global as any).__CHAT_LAST_ERROR = {
         userMessage: userMessage.text,
         error: err,
@@ -477,7 +459,6 @@ const ChatScreen: React.FC = () => {
   };
 
   const handleChatSelect = (chatId: number) => {
-    console.log('🔄 Switching to chat ID:', chatId);
     setCurrentChatId(chatId);
     // Drawer closing is now handled by ChatDrawer component
   };
@@ -497,18 +478,14 @@ const ChatScreen: React.FC = () => {
 
   const handleNewChat = async () => {
     try {
-      console.log('🆕 Creating new chat...');
-      
       // Auto-interrupt any ongoing inference
       const isCurrentlyGenerating = inferenceMode === 'local' ? isTyping : cloudGenerating;
       if (isCurrentlyGenerating) {
-        console.log('🛑 Auto-interrupting ongoing inference for new chat');
         handleInterrupt();
       }
 
       // Create a new chat
       const newChatId = await createNewChat();
-      console.log('✅ New chat created with ID:', newChatId);
 
       setCurrentChatId(newChatId);
       handleDrawerClose();
@@ -523,13 +500,9 @@ const ChatScreen: React.FC = () => {
           }
         } catch (error) {
           // Haptic feedback not available, ignore
-          console.log('📱 Haptic feedback not available');
         }
       }
-
-      console.log('🎉 New chat setup complete');
     } catch (error) {
-      console.error('❌ Failed to create new chat:', error);
       Alert.alert('Error', 'Failed to create new chat. Please try again.');
     }
   };
@@ -607,7 +580,6 @@ const ChatScreen: React.FC = () => {
   return (
     <CloudInferenceErrorBoundary
       onError={(error, errorInfo) => {
-        console.error('CloudInference Error Boundary triggered:', error, errorInfo);
         // Could send to analytics or error reporting service
       }}
       fallback={(error, retry) => (

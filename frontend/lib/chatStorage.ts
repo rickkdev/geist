@@ -2,11 +2,9 @@ import SQLite from 'react-native-sqlite-storage';
 import RNFS from 'react-native-fs';
 import { Platform } from 'react-native';
 
-// Enable debugging in development
-if (__DEV__) {
-  SQLite.DEBUG(true);
-  SQLite.enablePromise(true);
-}
+// Disable SQLite debugging to reduce console noise
+SQLite.DEBUG(false);
+SQLite.enablePromise(true);
 
 // Database configuration
 const DATABASE_NAME = 'geist_chats.db';
@@ -44,16 +42,7 @@ let db: SQLite.SQLiteDatabase | null = null;
  */
 export const initializeDatabase = async (): Promise<void> => {
   try {
-    console.log('🗄️ Initializing SQLite database...');
-    console.log('🗄️ Database config:', {
-      DATABASE_NAME,
-      DATABASE_VERSION,
-      DATABASE_DISPLAY_NAME,
-      DATABASE_SIZE,
-    });
-
     // Open database
-    console.log('🗄️ Opening database...');
     db = await SQLite.openDatabase({
       name: DATABASE_NAME,
       version: DATABASE_VERSION,
@@ -61,31 +50,18 @@ export const initializeDatabase = async (): Promise<void> => {
       size: DATABASE_SIZE,
     });
 
-    console.log('✅ Database opened successfully');
-    console.log('🗄️ Database instance:', !!db);
-
     // Enable WAL mode for better concurrent access
-    console.log('🗄️ Enabling WAL mode...');
     await db.executeSql('PRAGMA journal_mode=WAL;');
     await db.executeSql('PRAGMA synchronous=NORMAL;');
 
-    console.log('✅ WAL mode enabled');
-
     // Run migrations
-    console.log('🗄️ Running migrations...');
     await runMigrations();
 
     // Configure iOS backup exclusion
     if (Platform.OS === 'ios') {
       await configureIOSBackupExclusion();
     }
-
-    console.log('🎉 Database initialization complete');
-    console.log('🗄️ Final db instance:', !!db);
   } catch (error) {
-    console.error('❌ Database initialization failed:', error);
-    console.error('❌ Error details:', error instanceof Error ? error.message : 'Unknown error');
-    console.error('❌ Error stack:', error instanceof Error ? error.stack : 'No stack trace');
     throw error;
   }
 };
@@ -97,8 +73,6 @@ const runMigrations = async (): Promise<void> => {
   if (!db) throw new Error('Database not initialized');
 
   try {
-    console.log('🔄 Running database migrations...');
-
     // Create chats table
     await db.executeSql(`
       CREATE TABLE IF NOT EXISTS chats (
@@ -134,9 +108,7 @@ const runMigrations = async (): Promise<void> => {
       ON messages(chat_id, created_at);
     `);
 
-    console.log('✅ Database migrations completed');
   } catch (error) {
-    console.error('❌ Database migration failed:', error);
     throw error;
   }
 };
@@ -152,19 +124,15 @@ const configureIOSBackupExclusion = async (): Promise<void> => {
   // Note: RNFS.excludeFromBackup is not available in current version
   // iOS SQLite databases are automatically excluded from backup when stored in Library/Caches
   // or can be configured via app settings
-  console.log('📱 iOS backup exclusion: handled by system defaults for SQLite databases');
 };
 
 /**
  * Get database instance (ensure it's initialized)
  */
 const getDatabase = (): SQLite.SQLiteDatabase => {
-  console.log('🔍 getDatabase: Checking db instance:', !!db);
   if (!db) {
-    console.error('🔍 getDatabase: Database not initialized!');
     throw new Error('Database not initialized. Call initializeDatabase() first.');
   }
-  console.log('🔍 getDatabase: Returning database instance');
   return db;
 };
 
@@ -179,31 +147,18 @@ export const isDatabaseInitialized = (): boolean => {
  * Create a new chat
  */
 export const createChat = async (title: string = ''): Promise<number> => {
-  console.log('📝 createChat: Starting with title:', title);
-
   const database = getDatabase();
-  console.log('📝 createChat: Got database instance:', !!database);
-
   const now = Date.now();
-  console.log('📝 createChat: Timestamp:', now);
 
   try {
-    console.log('📝 createChat: Executing SQL insert...');
     const result = await database.executeSql(
       'INSERT INTO chats (title, created_at, updated_at) VALUES (?, ?, ?)',
       [title, now, now]
     );
 
-    console.log('📝 createChat: SQL executed successfully');
-    console.log('📝 createChat: Result:', result);
-
     const chatId = result[0].insertId;
-    console.log(`✅ Created chat with ID: ${chatId}`);
     return chatId;
   } catch (error) {
-    console.error('❌ Failed to create chat:', error);
-    console.error('❌ Error details:', error instanceof Error ? error.message : 'Unknown error');
-    console.error('❌ Error stack:', error instanceof Error ? error.stack : 'No stack trace');
     throw error;
   }
 };
@@ -234,7 +189,6 @@ export const getChatTitle = async (chatId: number): Promise<string> => {
     
     return 'New Chat';
   } catch (error) {
-    console.error('Failed to get chat title:', error);
     return 'New Chat';
   }
 };
@@ -271,10 +225,8 @@ export const getChats = async (options: { includeArchived?: boolean } = {}): Pro
       });
     }
 
-    console.log(`✅ Retrieved ${chats.length} chats with computed titles`);
     return chats;
   } catch (error) {
-    console.error('❌ Failed to get chats:', error);
     throw error;
   }
 };
@@ -310,10 +262,8 @@ export const getChat = async (
       messages.push(messagesResult[0].rows.item(i));
     }
 
-    console.log(`✅ Retrieved chat ${chatId} with ${messages.length} messages`);
     return { ...chat, messages };
   } catch (error) {
-    console.error('❌ Failed to get chat:', error);
     throw error;
   }
 };
@@ -340,14 +290,11 @@ export const addMessage = async (
       // Update chat's updated_at timestamp
       await tx.executeSql('UPDATE chats SET updated_at = ? WHERE id = ?', [now, chatId]);
 
-
-      console.log(`✅ Added ${role} message to chat ${chatId}`);
       return result.insertId;
     });
 
     return 0; // Transaction doesn't return insertId directly
   } catch (error) {
-    console.error('❌ Failed to add message:', error);
     throw error;
   }
 };
@@ -369,10 +316,7 @@ export const renameChat = async (chatId: number, title: string): Promise<void> =
       Date.now(),
       chatId,
     ]);
-
-    console.log(`✅ Renamed chat ${chatId} to: "${trimmedTitle}"`);
   } catch (error) {
-    console.error('❌ Failed to rename chat:', error);
     throw error;
   }
 };
@@ -389,10 +333,7 @@ export const pinChat = async (chatId: number, pinned: boolean): Promise<void> =>
       Date.now(),
       chatId,
     ]);
-
-    console.log(`✅ ${pinned ? 'Pinned' : 'Unpinned'} chat ${chatId}`);
   } catch (error) {
-    console.error('❌ Failed to pin/unpin chat:', error);
     throw error;
   }
 };
@@ -409,10 +350,7 @@ export const archiveChat = async (chatId: number, archived: boolean): Promise<vo
       Date.now(),
       chatId,
     ]);
-
-    console.log(`✅ ${archived ? 'Archived' : 'Unarchived'} chat ${chatId}`);
   } catch (error) {
-    console.error('❌ Failed to archive/unarchive chat:', error);
     throw error;
   }
 };
@@ -431,10 +369,7 @@ export const deleteChat = async (chatId: number): Promise<void> => {
       // Delete chat
       await tx.executeSql('DELETE FROM chats WHERE id = ?', [chatId]);
     });
-
-    console.log(`✅ Deleted chat ${chatId} and all its messages`);
   } catch (error) {
-    console.error('❌ Failed to delete chat:', error);
     throw error;
   }
 };
@@ -453,7 +388,6 @@ export const getMessageCount = async (chatId: number): Promise<number> => {
 
     return result[0].rows.item(0).count;
   } catch (error) {
-    console.error('❌ Failed to get message count:', error);
     throw error;
   }
 };
@@ -466,9 +400,7 @@ export const closeDatabase = async (): Promise<void> => {
     try {
       await db.close();
       db = null;
-      console.log('✅ Database connection closed');
     } catch (error) {
-      console.error('❌ Failed to close database:', error);
       throw error;
     }
   }

@@ -33,7 +33,6 @@ class HarmonyService:
     def __init__(self):
         """Initialize Harmony encoding for gpt-oss model."""
         self.encoding = load_harmony_encoding(HarmonyEncodingName.HARMONY_GPT_OSS)
-        logging.info("HarmonyService initialized with HARMONY_GPT_OSS encoding")
 
     def prepare_conversation(
         self,
@@ -114,10 +113,6 @@ class HarmonyService:
                 config=config
             )
             
-            logging.info(
-                f"Prepared Harmony conversation: {len(harmony_messages)} messages -> {len(tokens)} tokens"
-            )
-            logging.debug(f"Reasoning effort: {reasoning_effort}")
             
             return tokens
             
@@ -187,10 +182,6 @@ class HarmonyService:
                         "channel": "final"
                     })
             
-            logging.debug(
-                f"Parsed Harmony response: {len(result['final'])} final, "
-                f"{len(result['analysis'])} analysis, {len(result['commentary'])} commentary"
-            )
             
             return result
             
@@ -249,7 +240,6 @@ class HarmonyService:
             return len(tokens) > 0
             
         except Exception as e:
-            logging.error(f"Harmony encoding validation failed: {e}")
             return False
 
     def get_encoding_info(self) -> Dict[str, Any]:

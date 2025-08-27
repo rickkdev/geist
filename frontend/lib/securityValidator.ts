@@ -257,7 +257,6 @@ export class SecurityValidator {
    * Run all security validation tests
    */
   static async runFullValidation(): Promise<SecurityValidationReport> {
-    console.log('🔒 Starting comprehensive security validation...');
     
     const tests = await Promise.all([
       this.validateEncryption(),
@@ -275,11 +274,6 @@ export class SecurityValidator {
       timestamp: Date.now(),
     };
 
-    console.log('🔒 Security validation complete:', overall ? '✅ PASSED' : '❌ FAILED');
-    tests.forEach(test => {
-      const status = test.passed ? '✅' : '❌';
-      console.log(`  ${status} ${test.testName}${test.error ? `: ${test.error}` : ''}`);
-    });
 
     return report;
   }

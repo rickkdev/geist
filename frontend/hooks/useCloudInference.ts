@@ -85,7 +85,6 @@ export function useCloudInference(options: UseCloudInferenceOptions = {}): UseCl
         error: null
       });
     } catch (error) {
-      console.error('Failed to initialize cloud inference client:', error);
       updateState({
         isLoading: false,
         connectionStatus: 'error',
@@ -184,7 +183,6 @@ export function useCloudInference(options: UseCloudInferenceOptions = {}): UseCl
       if (error?.name === 'AbortError' || 
           error?.message?.includes('aborted') || 
           error?.message?.includes('Request aborted')) {
-        console.log('✅ Cloud inference interrupted by user');
         updateState({ 
           isGenerating: false,
           error: null,
@@ -193,8 +191,6 @@ export function useCloudInference(options: UseCloudInferenceOptions = {}): UseCl
         // Throw a specific interruption error for the ChatScreen to handle
         throw new Error('Generation interrupted');
       }
-      
-      console.error('Cloud inference error:', error);
       
       let errorMessage = 'Unknown error occurred';
       let connectionStatus: CloudInferenceState['connectionStatus'] = 'error';
@@ -239,9 +235,7 @@ export function useCloudInference(options: UseCloudInferenceOptions = {}): UseCl
   }, [state.isGenerating, updateState]);
 
   const interrupt = useCallback(() => {
-    console.log('🛑 Interrupting cloud inference');
     if (abortControllerRef.current) {
-      console.log('🛑 Aborting controller');
       abortControllerRef.current.abort();
     }
     // Immediately update state

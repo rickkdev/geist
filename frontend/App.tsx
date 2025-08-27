@@ -15,12 +15,9 @@ export default function App() {
   useEffect(() => {
     const initializeApp = async () => {
       try {
-        console.log('🚀 Initializing Geist app...');
         await initializeDatabase();
         setIsDbInitialized(true);
-        console.log('✅ App initialization complete');
       } catch (error) {
-        console.error('❌ Failed to initialize app:', error);
         setDbError(error instanceof Error ? error.message : 'Unknown error');
       }
     };

@@ -87,9 +87,6 @@ export class CloudInferenceClient {
 
       const keys: RouterPublicKeys = await response.json();
 
-      // Debug: Log the received public key
-      console.log('🔑 Received public key from backend:', keys.current_pubkey);
-      console.log('🔑 Public key length:', keys.current_pubkey?.length);
 
       // Validate response format
       if (!keys.current_pubkey || !keys.algorithm) {
@@ -135,7 +132,6 @@ export class CloudInferenceClient {
   ): Promise<CloudInferenceResponse> {
     try {
       // Ensure HPKE client is initialized
-      console.log('🔐 Ensuring HPKE client is initialized...');
       await this.hpkeClient.initialize();
 
       // Get router public keys
@@ -143,11 +139,6 @@ export class CloudInferenceClient {
 
       // Encrypt the message using HPKE
       const messageJson = JSON.stringify(message);
-      console.log('📤 Preparing to encrypt message:', messageJson.length, 'characters');
-      console.log(
-        '📤 Message sample:',
-        messageJson.substring(0, 500) + (messageJson.length > 500 ? '...' : '')
-      );
 
       const encryptedMessage = await this.hpkeClient.seal(messageJson, keys.current_pubkey);
 
@@ -188,9 +179,6 @@ export class CloudInferenceClient {
           const delay = retryAfter
             ? parseInt(retryAfter) * 1000
             : this.calculateBackoffDelay(attempt);
-          console.log(
-            `⏳ Rate limited, retrying after ${delay}ms (attempt ${attempt + 1}/${this.config.maxRetries})`
-          );
           await this.sleep(delay);
           return this.sendMessageWithRetry(message, onToken, attempt + 1, abortSignal);
         }
@@ -216,9 +204,6 @@ export class CloudInferenceClient {
         // Retry logic for retryable errors
         if (error.retryable && attempt < this.config.maxRetries) {
           const delay = this.calculateBackoffDelay(attempt);
-          console.log(
-            `🔄 Retrying request after ${delay}ms (attempt ${attempt + 1}/${this.config.maxRetries}): ${error.message}`
-          );
           await this.sleep(delay);
           return this.sendMessageWithRetry(message, onToken, attempt + 1, abortSignal);
         }
@@ -242,9 +227,6 @@ export class CloudInferenceClient {
       // Retry network errors
       if (isNetworkError && attempt < this.config.maxRetries) {
         const delay = this.calculateBackoffDelay(attempt);
-        console.log(
-          `🌐 Network error, retrying after ${delay}ms (attempt ${attempt + 1}/${this.config.maxRetries})`
-        );
         await this.sleep(delay);
         return this.sendMessageWithRetry(message, onToken, attempt + 1, abortSignal);
       }
@@ -277,11 +259,9 @@ export class CloudInferenceClient {
     this.harmonyDecoder.reset();
     
     try {
-      console.log('📡 Starting to read streaming response...');
 
       // For React Native, try to use the reader if available
       if (response.body && typeof response.body.getReader === 'function') {
-        console.log('📖 Using stream reader...');
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
@@ -290,19 +270,16 @@ export class CloudInferenceClient {
           while (true) {
             // Check if aborted
             if (abortSignal?.aborted) {
-              console.log('📖 Stream reading aborted by user');
               break;
             }
             
             const { done, value } = await reader.read();
 
             if (done) {
-              console.log('📖 Stream reading complete');
               break;
             }
 
             buffer += decoder.decode(value, { stream: true });
-            console.log('📖 Read chunk, buffer length:', buffer.length);
 
             // Process complete SSE events
             const events = this.parseSSEEvents(buffer);
@@ -311,7 +288,6 @@ export class CloudInferenceClient {
             for (const event of events.events) {
               // Check if aborted before processing each event
               if (abortSignal?.aborted) {
-                console.log('📖 Aborting SSE event processing (reader)');
                 throw new Error('Request aborted');
               }
               
@@ -324,7 +300,6 @@ export class CloudInferenceClient {
                 if (error instanceof Error && error.message === 'Request aborted') {
                   throw error;
                 }
-                console.error('Error decrypting SSE event:', error);
               }
             }
           }
@@ -332,26 +307,15 @@ export class CloudInferenceClient {
           reader.releaseLock();
         }
       } else {
-        console.log('📄 Falling back to text() method...');
         // Fallback to reading entire response as text
         const responseText = await response.text();
-        console.log('📄 Read complete response, length:', responseText.length);
-
-        // Debug: Log first 1000 chars of response
-        console.log('📄 Response sample:', responseText.substring(0, 1000));
 
         // Process the complete response as SSE events
         const events = this.parseSSEEvents(responseText);
-        console.log('📄 Parsed events:', events.events.length);
-        if (events.events.length > 0) {
-          console.log('📄 First event:', events.events[0]);
-          console.log('📄 Second event:', events.events[1] || 'N/A');
-        }
 
         for (const event of events.events) {
           // Check if aborted before processing each event (fallback mode)
           if (abortSignal?.aborted) {
-            console.log('📖 Aborting SSE event processing (fallback)');
             throw new Error('Request aborted');
           }
           
@@ -366,18 +330,14 @@ export class CloudInferenceClient {
             if (error instanceof Error && error.message === 'Request aborted') {
               throw error;
             }
-            console.error('Error decrypting SSE event:', error);
           }
         }
       }
     } catch (error) {
       // Check if this was an abort (interruption) - don't log as error
       if (error instanceof Error && error.message === 'Request aborted') {
-        console.log('✅ Stream processing aborted by user');
         throw error; // Re-throw for the hook to handle
       }
-      
-      console.error('Stream processing error:', error);
       throw new CloudInferenceError(
         `Stream processing failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
         'STREAM_PROCESSING_ERROR'
@@ -390,8 +350,6 @@ export class CloudInferenceClient {
     const lines = buffer.split(/\r?\n/); // Handle both \r\n and \n
     let currentEvent: string[] = [];
 
-    console.log(`🔍 SSE Parser: Processing ${lines.length} lines`);
-
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i].trim();
 
@@ -399,9 +357,6 @@ export class CloudInferenceClient {
         // Empty line indicates end of event
         if (currentEvent.length > 0) {
           events.push(currentEvent.join('\n'));
-          console.log(
-            `📦 SSE Parser: Event ${events.length} completed, ${currentEvent.length} lines`
-          );
           currentEvent = [];
         }
       } else if (
@@ -422,9 +377,6 @@ export class CloudInferenceClient {
 
     // Return any remaining incomplete event
     const remaining = currentEvent.length > 0 ? currentEvent.join('\n') : '';
-    console.log(
-      `🏁 SSE Parser: Completed with ${events.length} events, ${remaining.length} chars remaining`
-    );
     return { events, remaining };
   }
 
@@ -453,13 +405,10 @@ export class CloudInferenceClient {
 
         // For development, the backend sends base64-encoded text chunks
         try {
-          // Debug: Log the ciphertext being decoded
-          console.log('🔍 Attempting to decode ciphertext:', encryptedChunk.ciphertext);
 
           // Validate base64 format before decoding
           const base64Pattern = /^[A-Za-z0-9+/]*={0,2}$/;
           if (!base64Pattern.test(encryptedChunk.ciphertext)) {
-            console.error('⚠️ Invalid base64 format:', encryptedChunk.ciphertext);
             return null;
           }
 
@@ -480,28 +429,18 @@ export class CloudInferenceClient {
           // Use Harmony decoder to properly parse channels
           const { shouldInclude, isComplete } = this.harmonyDecoder.processToken(decryptedText);
           
-          if (isComplete) {
-            console.log('🏁 Harmony response complete');
-            // Could potentially trigger completion callback here if needed
-          }
-          
           if (shouldInclude) {
-            console.log('✅ Final channel token:', JSON.stringify(decryptedText));
             return decryptedText;
           } else {
-            console.log('⏭️ Skipping non-final token:', JSON.stringify(decryptedText));
             return null;
           }
         } catch (error) {
-          console.error('Error decoding ciphertext:', encryptedChunk.ciphertext, 'Error:', error);
           return null;
         }
       } catch (parseError) {
-        console.error('Error parsing encrypted chunk JSON:', parseError);
         return null;
       }
     } catch (error) {
-      console.error('Error processing SSE event:', error);
       return null;
     }
   }
@@ -511,20 +450,14 @@ export class CloudInferenceClient {
       const expiryTime = new Date(keys.expires_at).getTime();
       const timeUntilExpiry = expiryTime - Date.now();
 
-      // Warn if keys expire within 1 hour
-      if (timeUntilExpiry < 3600000 && timeUntilExpiry > 0) {
-        console.log('⚠️ Router keys expiring in', Math.round(timeUntilExpiry / 60000), 'minutes');
-      }
-
       // Force refresh if keys are expired or expiring soon
       if (timeUntilExpiry < 300000) {
         // 5 minutes
-        console.log('🔄 Router keys expiring soon, clearing cache for refresh');
         this.cachedPublicKeys = null;
         this.keysCacheExpiry = 0;
       }
     } catch (error) {
-      console.error('Error handling key rotation:', error);
+      // Silent error handling for key rotation
     }
   }
 
@@ -538,7 +471,6 @@ export class CloudInferenceClient {
       const serverFingerprint = response.headers.get('x-cert-fingerprint');
 
       if (!serverFingerprint) {
-        console.warn('⚠️ Certificate pinning configured but server did not provide fingerprint');
         return;
       }
 
@@ -549,7 +481,6 @@ export class CloudInferenceClient {
         );
       }
 
-      console.log('✅ Certificate fingerprint validated');
     } catch (error) {
       if (error instanceof CloudInferenceError) {
         throw error;

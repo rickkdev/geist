@@ -29,10 +29,8 @@ class InferenceService:
         # Initialize Harmony service if enabled
         if settings.HARMONY_ENABLED:
             self.harmony_service = HarmonyService()
-            logging.info("Harmony service enabled for inference")
         else:
             self.harmony_service = None
-            logging.info("Harmony service disabled - using standard chat completions")
 
     async def startup(self):
         """Initialize the HTTP client and health monitor."""
@@ -55,9 +53,6 @@ class InferenceService:
                         ),
                     )
                 else:
-                    logging.warning(
-                        f"UNIX socket {socket_path} not found - inference will be unavailable"
-                    )
                     self.client = None
             else:
                 raise ValueError("UNIX socket path not configured")
@@ -95,7 +90,6 @@ class InferenceService:
                     ssl_context.verify_mode = ssl.CERT_NONE
 
                 client_kwargs["verify"] = ssl_context
-                logging.info("mTLS enabled for inference service")
 
             self.client = httpx.AsyncClient(**client_kwargs)
 
@@ -134,9 +128,6 @@ class InferenceService:
         try:
             # Prepare request data based on whether Harmony is enabled
             if self.harmony_service and self.settings.HARMONY_ENABLED:
-                # Use Harmony format for conversation preparation
-                logging.info("Using Harmony format for conversation preparation")
-                
                 # Prepare conversation with Harmony encoding
                 harmony_tokens = self.harmony_service.prepare_conversation(
                     request.messages,
@@ -156,8 +147,6 @@ class InferenceService:
                     "stream": True,
                 }
                 
-                logging.info(f"Using Harmony completion endpoint with {len(harmony_tokens)} tokens")
-                logging.debug(f"Harmony prompt preview: {harmony_prompt[:100]}...")
                 use_completion_api = True
             else:
                 # Standard chat completions format
@@ -171,10 +160,7 @@ class InferenceService:
                 }
                 use_completion_api = False
 
-            logging.info(f"Starting inference stream for request {request.request_id}")
-            logging.debug(
-                f"Request params: temp={request.temperature}, top_p={request.top_p}, max_tokens={request.max_tokens}"
-            )
+            logging.info(f"Starting inference for request {request.request_id}")
 
             # Choose endpoint using health monitor
             if self.settings.INFERENCE_TRANSPORT == "unix":
@@ -205,9 +191,6 @@ class InferenceService:
                     # Check request budget timeout
                     current_time = time.time()
                     if current_time > request_deadline:
-                        logging.warning(
-                            f"Request {request.request_id} exceeded budget timeout of {budget_timeout}s"
-                        )
                         raise asyncio.TimeoutError("Request budget exceeded")
 
                     # Parse SSE format: lines starting with "data: "
@@ -216,9 +199,6 @@ class InferenceService:
 
                         # Check for completion
                         if data.strip() == "[DONE]":
-                            logging.info(
-                                f"Stream completed for request {request.request_id}, tokens: {token_count}"
-                            )
                             break
 
                         try:
@@ -242,25 +222,15 @@ class InferenceService:
                                 # Extract and yield token content
                                 if token:  # Only yield non-empty tokens
                                     token_count += 1
-                                    logging.debug(
-                                        f"Yielding token {token_count}: {repr(token[:50])}"
-                                    )
                                     yield token
 
                                 # Check if this is the final chunk
                                 if finish_reason:
-                                    logging.info(
-                                        f"Stream finished for request {request.request_id}, reason: {finish_reason}"
-                                    )
                                     break
 
                         except json.JSONDecodeError as e:
-                            logging.warning(
-                                f"Failed to parse SSE data: {e}, data: {data[:100]}"
-                            )
                             continue
                         except Exception as e:
-                            logging.error(f"Error processing SSE chunk: {e}")
                             continue
 
             # Record successful completion

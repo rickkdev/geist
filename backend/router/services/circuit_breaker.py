@@ -96,16 +96,12 @@ class CircuitBreaker:
     def _transition_to_open(self):
         """Transition to OPEN state."""
         if self.state != CircuitBreakerState.OPEN:
-            logging.warning(
-                f"Circuit breaker transitioning to OPEN after {self.failure_count} failures"
-            )
             self.state = CircuitBreakerState.OPEN
             self.state_transitions += 1
 
     def _transition_to_half_open(self):
         """Transition to HALF_OPEN state."""
         if self.state != CircuitBreakerState.HALF_OPEN:
-            logging.info("Circuit breaker transitioning to HALF_OPEN for testing")
             self.state = CircuitBreakerState.HALF_OPEN
             self.success_count = 0
             self.state_transitions += 1
@@ -113,7 +109,6 @@ class CircuitBreaker:
     def _transition_to_closed(self):
         """Transition to CLOSED state."""
         if self.state != CircuitBreakerState.CLOSED:
-            logging.info("Circuit breaker transitioning to CLOSED - service recovered")
             self.state = CircuitBreakerState.CLOSED
             self.failure_count = 0
             self.success_count = 0
@@ -142,7 +137,6 @@ class CircuitBreaker:
 
     def reset(self):
         """Reset circuit breaker to initial state (for testing/manual recovery)."""
-        logging.info("Circuit breaker manually reset")
         self.state = CircuitBreakerState.CLOSED
         self.failure_count = 0
         self.success_count = 0

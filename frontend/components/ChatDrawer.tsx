@@ -63,7 +63,7 @@ export default function ChatDrawer({
       const allChats = await getChats({ includeArchived: false });
       setChats(allChats);
     } catch (error) {
-      console.error('Failed to load chats:', error);
+      // Failed to load chats
     }
   };
 
@@ -88,7 +88,7 @@ export default function ChatDrawer({
       setRenameId(null);
       setRenameText('');
     } catch (error) {
-      console.error('Failed to rename chat:', error);
+      // Failed to rename chat
     }
   };
 
@@ -98,7 +98,7 @@ export default function ChatDrawer({
       await loadChats();
       setShowActionMenu(null);
     } catch (error) {
-      console.error('Failed to pin chat:', error);
+      // Failed to pin chat
     }
   };
 
@@ -108,7 +108,7 @@ export default function ChatDrawer({
       await loadChats();
       setShowActionMenu(null);
     } catch (error) {
-      console.error('Failed to archive chat:', error);
+      // Failed to archive chat
     }
   };
 
@@ -118,7 +118,7 @@ export default function ChatDrawer({
       await loadChats();
       setShowActionMenu(null);
     } catch (error) {
-      console.error('Failed to delete chat:', error);
+      // Failed to delete chat
     }
   };
 

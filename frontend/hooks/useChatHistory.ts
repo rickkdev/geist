@@ -17,7 +17,6 @@ export const useChatHistory = () => {
           setMessages(savedMessages);
         }
       } catch (error) {
-        console.error('Failed to load messages:', error);
       } finally {
         setIsLoading(false);
       }
@@ -53,8 +52,6 @@ export const useChatHistory = () => {
 
   const logChatHistoryForLLM = () => {
     const timestamp = new Date().toISOString();
-    console.log(`📚 CHAT HISTORY LOG - ${timestamp}`);
-    console.log('='.repeat(70));
     
     const formattedHistory = messages.map(msg => ({
       role: msg.role,
@@ -62,31 +59,13 @@ export const useChatHistory = () => {
       timestamp: new Date(msg.timestamp).toISOString()
     }));
     
-    console.log('📊 Stats:', `${messages.length} messages, last updated: ${timestamp}`);
-    console.log('');
     
-    console.log('💬 Conversation View:');
-    messages.forEach((msg, index) => {
-      const time = new Date(msg.timestamp).toLocaleTimeString();
-      const preview = msg.text.length > 100 ? msg.text.slice(0, 100) + '...' : msg.text;
-      console.log(`[${index + 1}] ${time} - ${msg.role.toUpperCase()}: ${preview}`);
-    });
     
-    console.log('');
-    console.log('📋 OpenAI Format (for debugging):');
     const openAIFormat = messages.map(msg => ({
       role: msg.role,
       content: msg.text
     }));
-    console.log(JSON.stringify(openAIFormat, null, 2));
     
-    console.log('');
-    console.log('🔍 Developer Tools Access:');
-    console.log('Access full history: global.__CHAT_HISTORY');
-    console.log('Last partial response: global.__CHAT_LAST_PARTIAL');  
-    console.log('Last error: global.__CHAT_LAST_ERROR');
-    console.log('Last LLM response: global.__LLAMA_LAST_RESPONSE');
-    console.log('Last LLM timeout: global.__LLAMA_LAST_PARTIAL_RESPONSE');
     
     // Store in global for developer tools access
     (global as any).__CHAT_HISTORY = {
@@ -95,8 +74,6 @@ export const useChatHistory = () => {
       timestamp,
       messageCount: messages.length
     };
-    
-    console.log('='.repeat(70));
   };
 
   return {

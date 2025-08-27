@@ -67,10 +67,6 @@ class HPKEService:
             if self.settings.MLOCK_SECRETS:
                 self._mlock_sensitive_data()
 
-            logging.info(
-                "HPKE keys initialized with X25519-HKDF-SHA256 + ChaCha20-Poly1305"
-            )
-
         except Exception as e:
             logging.error(f"Failed to initialize HPKE keys: {e}")
             raise
@@ -104,10 +100,7 @@ class HPKEService:
             return DecryptedChatPayload(**plaintext_data)
 
         except Exception as e:
-            logging.error(f"HPKE decryption failed: {type(e).__name__}: {str(e)}")
-            if hasattr(e, 'errors'):
-                logging.error(f"Validation errors: {e.errors()}")
-            logging.error(f"Raw decrypted data: {plaintext_data}")
+            logging.error(f"HPKE decryption failed: {type(e).__name__}")
             raise ValueError("Decryption failed")
 
     def encrypt_chunk(
@@ -174,16 +167,13 @@ class HPKEService:
         # Check timestamp window (TTL)
         request_age = (now - request.timestamp).total_seconds()
         if request_age > self.settings.REQUEST_TTL_SECONDS:
-            logging.warning(f"Request expired: age={request_age}s")
             return False
 
         if request_age < -30:  # Allow 30 seconds clock skew
-            logging.warning(f"Request from future: age={request_age}s")
             return False
 
         # Check request ID for replay
         if request.request_id in self.seen_request_ids:
-            logging.warning(f"Replay detected: request_id={request.request_id}")
             return False
 
         # Store request ID with cleanup
@@ -218,8 +208,6 @@ class HPKEService:
 
             # Update key ID
             self.key_id = f"key-{datetime.now(timezone.utc).strftime('%Y%m%d%H')}"
-
-            logging.info(f"HPKE keys rotated successfully, new key_id: {self.key_id}")
 
     def should_rotate_keys(self) -> bool:
         """Check if keys should be rotated based on expiration time."""
@@ -277,7 +265,6 @@ class HPKEService:
             with open(self.settings.ROUTER_HPKE_PUBLIC_KEY_PATH, "rb") as f:
                 self.current_public_key = f.read()
 
-            logging.info("HPKE keys loaded from secure files")
         except Exception as e:
             logging.error(f"Failed to load keys from files: {e}")
             raise
@@ -302,7 +289,6 @@ class HPKEService:
                 f.write(self.current_public_key)
             os.chmod(self.settings.ROUTER_HPKE_PUBLIC_KEY_PATH, 0o644)
 
-            logging.info("HPKE keys saved to secure files")
         except Exception as e:
             logging.error(f"Failed to save keys to files: {e}")
             raise
@@ -316,18 +302,8 @@ class HPKEService:
                 libc = ctypes.CDLL(libc)
                 # mlockall with MCL_CURRENT | MCL_FUTURE
                 result = libc.mlockall(3)  # MCL_CURRENT=1, MCL_FUTURE=2
-                if result == 0:
-                    logging.info(
-                        "Sensitive key material locked in memory with mlockall"
-                    )
-                else:
-                    logging.warning(
-                        "mlockall failed, continuing without memory locking"
-                    )
-            else:
-                logging.warning("libc not found, cannot use mlockall")
-        except Exception as e:
-            logging.warning(f"Failed to mlock sensitive data: {e}")
+        except Exception:
+            pass  # Silent fallback
 
     def _zero_memory(self, data: bytes):
         """Securely zero out sensitive data in memory."""
