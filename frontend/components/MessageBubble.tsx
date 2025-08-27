@@ -19,21 +19,46 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
   
   // Process text to ensure proper line breaks for markdown
   const processMessageText = (text: string): string => {
-    // First, protect markdown bold/italic markers from being split
+    if (!text || typeof text !== 'string') return text;
+    
     let processed = text;
     
-    // Add line breaks between numbered list items (but not within bold text)
-    // Match: number + period + space + content + another number starting
-    processed = processed.replace(/(\d+\.\s+[^0-9\n]*?)(?=\d+\.)/g, '$1\n');
+    // Only add line breaks in very safe, specific cases:
     
-    // Add double line break between end of list and start of new paragraph
-    // Only if there's a capital letter starting a new sentence after list
-    processed = processed.replace(/(\d+\.\s+.*?\.)([A-Z][a-z])/g, '$1\n\n$2');
+    // 1. Add line break after numbered list items that are immediately followed by another number
+    // But only if we can be 100% sure it's a list (check for multiple occurrences)
+    const numberedListPattern = /^(\d+\.\s+.+)(\d+\.\s+)/gm;
+    if (numberedListPattern.test(text)) {
+      processed = processed.replace(/^(\d+\.\s+.+?)(?=^\d+\.\s+)/gm, '$1\n');
+    }
     
-    // Add line break before markdown headers (# ## ###)
-    processed = processed.replace(/([^\n])(#{1,3}\s+)/g, '$1\n\n$2');
+    // 2. Add line break before markdown headers that start at beginning of line
+    processed = processed.replace(/^(#{1,6}\s+)/gm, '\n$1');
     
-    return processed;
+    // 3. Add line break after sentences that end with period and are followed by capital letter
+    // Only if the sentence is longer than 20 chars to avoid abbreviations
+    processed = processed.replace(/([.!?]\s+)([A-Z][a-z]{3,})/g, (match, ending, nextWord) => {
+      // Find the sentence start to check length
+      const beforeMatch = processed.substring(0, processed.indexOf(match));
+      const lastSentenceStart = Math.max(
+        beforeMatch.lastIndexOf('. '),
+        beforeMatch.lastIndexOf('! '),
+        beforeMatch.lastIndexOf('? '),
+        beforeMatch.lastIndexOf('\n')
+      );
+      const sentenceLength = beforeMatch.length - lastSentenceStart;
+      
+      // Only add line break for longer sentences
+      if (sentenceLength > 30) {
+        return ending + '\n' + nextWord;
+      }
+      return match;
+    });
+    
+    // 4. Clean up excessive line breaks (more than 2 consecutive)
+    processed = processed.replace(/\n{3,}/g, '\n\n');
+    
+    return processed.trim();
   };
   
   // Custom markdown styles
