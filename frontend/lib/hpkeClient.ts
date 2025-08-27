@@ -198,7 +198,9 @@ export class HPKEClient {
       if (this.DEVELOPMENT_MODE) {
         // Development: Base64 encoding for backend compatibility
         console.log('🔐 HPKE: Using development mode - base64 encoding plaintext');
-        ciphertextB64 = btoa(plaintext);
+        // Use TextEncoder to handle unicode characters properly
+        const plaintextBytes = new TextEncoder().encode(plaintext);
+        ciphertextB64 = btoa(String.fromCharCode.apply(null, Array.from(plaintextBytes)));
         nonceB64 = btoa(String.fromCharCode.apply(null, Array.from(getRandomBytes(12))));
       } else {
         // Production: Real ChaCha20-Poly1305 encryption
