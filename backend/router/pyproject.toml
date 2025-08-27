@@ -9,6 +9,7 @@ dependencies = [
     "fastapi>=0.116.1",
     "hpke>=0.3.2",
     "httpx[http2]>=0.28.1",
+    "openai-harmony>=0.0.4",
     "pydantic-settings>=2.10.1",
     "python-dotenv>=1.1.1",
     "sse-starlette>=3.0.2",

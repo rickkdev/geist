@@ -917,3 +917,220 @@ Mobile App Certificate Pinning (lines 175, 297)
 
 Your architecture is designed for maximum control and
 minimal abstraction - exactly what K8s adds layers to.
+
+---
+
+## 🎯 17. OpenAI Harmony Response Format Implementation
+
+Based on the documentation at https://cookbook.openai.com/articles/openai-harmony and the GitHub repo https://github.com/openai/harmony, implementing the Harmony response format will improve the quality and structure of gpt-oss 20B model responses.
+
+### Core Harmony Concepts
+
+- **Roles**: `system` (highest priority) → `developer` → `user` → `assistant` → `tool`
+- **Channels**: `final` (user-facing), `analysis` (chain-of-thought), `commentary` (tool calls/preambles)
+- **Special Tokens**: `<|start|>`, `<|end|>`, `<|message|>`, `<|channel|>`, `<|return|>`
+- **Structure**: `<|start|>{header}<|message|>{content}<|end|>`
+
+### Implementation Tasks
+
+- [ ] **Install OpenAI Harmony Library**:
+  - [ ] Add `openai-harmony` to router dependencies: `uv add openai-harmony`
+  - [ ] Verify Python library installation and compatibility
+  - [ ] Import core components: `load_harmony_encoding`, `HarmonyEncodingName`, `Role`, `Message`, `Conversation`
+
+- [ ] **Harmony Service Integration** (`services/harmony_service.py`):
+  - [ ] Create HarmonyService class for response formatting
+  - [ ] Implement `load_harmony_encoding(HarmonyEncodingName.HARMONY_GPT_OSS)` setup
+  - [ ] Add conversation preparation: `Conversation.from_messages()` for chat history
+  - [ ] Implement `render_conversation_for_completion()` for model input preparation
+  - [ ] Add response parsing: `parse_messages_from_completion_tokens()` for model output
+
+- [ ] **Router Integration** (`main.py` and `services/inference_service.py`):
+  - [ ] Integrate HarmonyService into inference pipeline
+  - [ ] Modify chat endpoint to use Harmony conversation preparation
+  - [ ] Update streaming response handler to parse Harmony-formatted tokens
+  - [ ] Preserve chain-of-thought messages between conversation turns
+  - [ ] Handle different message channels (`final`, `analysis`, `commentary`)
+
+- [ ] **Response Processing Enhancement**:
+  - [ ] Implement reasoning effort level support (low/medium/high)
+  - [ ] Add proper handling of tool calls in `commentary` channel
+  - [ ] Support structured message parsing with role/channel separation
+  - [ ] Maintain conversation context with proper message history
+
+- [ ] **HPKE Integration with Harmony**:
+  - [ ] Ensure Harmony-formatted responses work with HPKE encryption
+  - [ ] Test streaming of structured Harmony responses through SSE
+  - [ ] Verify encrypted chunk formatting maintains Harmony structure
+  - [ ] Update response decoding to handle Harmony message format
+
+- [ ] **Configuration and Testing**:
+  - [ ] Add Harmony-specific configuration options to `config.py`
+  - [ ] Create test cases for Harmony response formatting
+  - [ ] Test conversation continuation with proper role/channel handling
+  - [ ] Validate improved response quality vs. standard chat completions
+  - [ ] Load test Harmony implementation performance impact
+
+- [ ] **Documentation Updates**:
+  - [ ] Document Harmony integration in configuration guide
+  - [ ] Add usage examples for Harmony-formatted conversations
+  - [ ] Update API documentation to reflect Harmony response structure
+  - [ ] Create troubleshooting guide for Harmony-specific issues
+
+### 🚀 Harmony Implementation Usage Commands
+
+**Development Testing:**
+
+```bash
+# Test Harmony library installation
+python3 -c "from openai_harmony import load_harmony_encoding, HarmonyEncodingName; print('Harmony installed successfully')"
+
+# Test basic Harmony conversation rendering
+python3 -c "
+from openai_harmony import load_harmony_encoding, HarmonyEncodingName, Role, Message, Conversation
+enc = load_harmony_encoding(HarmonyEncodingName.HARMONY_GPT_OSS)
+convo = Conversation.from_messages([Message.from_role_and_content(Role.USER, 'Hello')])
+tokens = enc.render_conversation_for_completion(convo, Role.ASSISTANT)
+print(f'Rendered tokens: {len(tokens)}')
+"
+
+# Test Harmony-formatted HPKE request
+python3 create_hpke_request.py "Explain quantum computing step by step" | grep curl | bash | python3 decode_hpke_response.py
+```
+
+**Harmony Response Quality Testing:**
+
+```bash
+# Compare standard vs Harmony responses
+python3 test_harmony_quality.py "Compare reasoning quality"
+
+# Test multi-turn conversation with Harmony
+python3 test_harmony_conversation.py
+
+# Validate Harmony streaming performance
+python3 test_harmony_streaming.py
+```
+
+**Expected Benefits:**
+- Improved response quality from gpt-oss 20B model
+- Structured reasoning with chain-of-thought preservation
+- Better tool call handling and conversation continuity
+- Enhanced user experience with clearer response formatting
+
+### Priority Implementation Order
+
+1. **Phase 1**: Install library and create basic HarmonyService
+2. **Phase 2**: Integrate with existing inference pipeline
+3. **Phase 3**: Test HPKE compatibility and streaming
+4. **Phase 4**: Optimize performance and add comprehensive testing
+
+This implementation should significantly improve the quality of responses from your gpt-oss 20B model by providing the structured conversation format it was designed to work with.
+
+---
+
+## 🎯 18. Response Verbosity Optimization (Post-Harmony)
+
+After implementing Harmony format integration, responses now have proper channel separation but remain overly verbose for mobile chat interfaces. While Harmony eliminated internal reasoning leaks, the final responses still contain excessive tables, detailed schedules, and multi-section formatting inappropriate for mobile.
+
+### Current Verbosity Issues Identified
+
+**✅ Fixed by Harmony**:
+- Internal reasoning no longer exposed to user
+- No more rambling thought processes like "We need to help prioritize..."
+- Proper channel separation between analysis and final response
+
+**❌ Remaining Verbosity Problems**:
+- Final responses still too structured/comprehensive (tables, schedules, tips sections)
+- Responses optimized for desktop/documentation, not mobile chat
+- No dynamic verbosity control based on context
+- Model doesn't understand mobile chat constraints
+
+### Implementation Tasks
+
+- [ ] **System Prompt Optimization**:
+  - [ ] Add mobile-first response guidelines to system prompts
+  - [ ] Emphasize conciseness and direct answers for chat interfaces
+  - [ ] Specify preferred response length (2-3 sentences for simple questions)
+  - [ ] Add context awareness for mobile vs desktop usage
+
+- [ ] **Dynamic Verbosity Control**:
+  - [ ] Add `verbosity_level` parameter to `InferenceRequest` model
+  - [ ] Implement verbosity levels: `brief`, `normal`, `detailed`
+  - [ ] Allow mobile app to specify desired response length
+  - [ ] Create verbosity-specific system prompt templates
+
+- [ ] **Harmony Reasoning Effort Tuning**:
+  - [ ] Test `reasoning_effort: "low"` for more concise responses
+  - [ ] Compare response quality across different reasoning effort levels
+  - [ ] Implement dynamic reasoning effort based on question complexity
+  - [ ] Add configuration options for different use cases
+
+- [ ] **Response Length Management**:
+  - [ ] Implement more aggressive `max_tokens` defaults for mobile
+  - [ ] Add response truncation with smart cutoff points
+  - [ ] Create response length estimation before sending
+  - [ ] Add response preview/summary options
+
+- [ ] **Context-Aware Response Formatting**:
+  - [ ] Detect question complexity and adjust response depth
+  - [ ] Simple questions → brief answers, complex questions → detailed
+  - [ ] Add response format preferences (bullet points vs paragraphs)
+  - [ ] Implement conversation context awareness
+
+### 🚀 Verbosity Control Usage Commands
+
+**Configuration Options:**
+
+```bash
+# Adjust Harmony reasoning effort
+HARMONY_REASONING_EFFORT=low          # More concise responses
+HARMONY_REASONING_EFFORT=medium       # Balanced (current)
+HARMONY_REASONING_EFFORT=high         # More detailed responses
+
+# New verbosity settings
+DEFAULT_VERBOSITY_LEVEL=brief         # For mobile apps
+MAX_TOKENS_MOBILE=150                # Shorter responses for mobile
+MAX_TOKENS_DESKTOP=500               # Longer responses for desktop
+```
+
+**Testing Different Verbosity Levels:**
+
+```bash
+# Test brief responses
+python3 create_hpke_request.py "What is 2+2?" --verbosity=brief
+
+# Test normal responses  
+python3 create_hpke_request.py "Help me prioritize my day" --verbosity=normal
+
+# Test detailed responses
+python3 create_hpke_request.py "Explain quantum computing" --verbosity=detailed
+```
+
+### Expected Results
+
+**Before Optimization (Current)**:
+```
+Here's a quick "rule-of-thumb" priority list:
+
+| # | Task | Why it's high priority | When it fits |
+|---|------|------------------------|---------------|
+|1 | Working | Deadlines/meetings | Morning 8-12 |
+|2 | Cleaning | Boosts productivity | 12-1pm |
+[... continues with tables, schedules, tips...]
+```
+
+**After Optimization (Target)**:
+```
+Priority order: 1) Work (morning), 2) Cleaning, 3) Building furniture, 4) Groceries, 5) Cooking, 6) Sport, 7) Time with girlfriend. 
+
+Start with work when you're fresh, then tackle physical tasks, and end with relaxation.
+```
+
+### Priority Implementation Order
+
+1. **Phase 1**: System prompt optimization for conciseness
+2. **Phase 2**: Dynamic verbosity control implementation  
+3. **Phase 3**: Harmony reasoning effort tuning
+4. **Phase 4**: Context-aware response formatting
+
+This optimization should achieve 60-80% reduction in response length while maintaining quality and usefulness for mobile chat interfaces.

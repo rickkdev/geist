@@ -29,9 +29,9 @@ class Settings(BaseSettings):
     DISABLE_DOCS: bool = True  # Disable FastAPI docs in production
 
     # Inference transport settings
-    INFERENCE_TRANSPORT: str = "unix"  # "unix" | "https"
+    INFERENCE_TRANSPORT: str = "https"  # "unix" | "https"
     INFERENCE_ENDPOINTS: List[str] = [
-        "/run/inference.sock"
+        "http://localhost:8001"
     ]  # UNIX socket paths or HTTPS URLs
     INFERENCE_TIMEOUT_SECONDS: int = 60
     INFERENCE_CONNECT_TIMEOUT_SECONDS: int = 10
@@ -85,6 +85,11 @@ class Settings(BaseSettings):
     # Development settings
     DEV_RELOAD: bool = False
     DEV_DEBUG: bool = False
+
+    # Harmony settings
+    HARMONY_ENABLED: bool = True  # Enable OpenAI Harmony response format
+    HARMONY_REASONING_EFFORT: str = "low"  # "low", "medium", "high" - using "low" for mobile chat
+    HARMONY_INCLUDE_ANALYSIS: bool = True  # Include analysis/reasoning channels
 
     class Config:
         env_file = [".env"]  # Primary env file

@@ -8,6 +8,7 @@ import httpx
 from config import Settings
 from models import InferenceRequest
 from services.health_monitor import HealthMonitor
+from services.harmony_service import HarmonyService
 
 
 class InferenceService:
@@ -24,6 +25,14 @@ class InferenceService:
         self.total_requests = 0
         self.latency_samples: List[float] = []
         self.error_count = 0
+        
+        # Initialize Harmony service if enabled
+        if settings.HARMONY_ENABLED:
+            self.harmony_service = HarmonyService()
+            logging.info("Harmony service enabled for inference")
+        else:
+            self.harmony_service = None
+            logging.info("Harmony service disabled - using standard chat completions")
 
     async def startup(self):
         """Initialize the HTTP client and health monitor."""
@@ -123,15 +132,44 @@ class InferenceService:
         request_deadline = start_time + budget_timeout
 
         try:
-            # Convert to llama.cpp chat completions format
-            request_data = {
-                "messages": request.messages,
-                "temperature": request.temperature,
-                "top_p": request.top_p,
-                "max_tokens": request.max_tokens,
-                "stream": True,
-                "stream_options": {"include_usage": False},
-            }
+            # Prepare request data based on whether Harmony is enabled
+            if self.harmony_service and self.settings.HARMONY_ENABLED:
+                # Use Harmony format for conversation preparation
+                logging.info("Using Harmony format for conversation preparation")
+                
+                # Prepare conversation with Harmony encoding
+                harmony_tokens = self.harmony_service.prepare_conversation(
+                    request.messages,
+                    reasoning_effort=self.settings.HARMONY_REASONING_EFFORT
+                )
+                
+                # Convert tokens back to text prompt for completion endpoint
+                # The model expects the Harmony-formatted prompt as raw text
+                harmony_prompt = self.harmony_service.encoding.decode(harmony_tokens)
+                
+                # Use completion endpoint with Harmony-formatted prompt
+                request_data = {
+                    "prompt": harmony_prompt,
+                    "temperature": request.temperature,
+                    "top_p": request.top_p,
+                    "max_tokens": request.max_tokens,
+                    "stream": True,
+                }
+                
+                logging.info(f"Using Harmony completion endpoint with {len(harmony_tokens)} tokens")
+                logging.debug(f"Harmony prompt preview: {harmony_prompt[:100]}...")
+                use_completion_api = True
+            else:
+                # Standard chat completions format
+                request_data = {
+                    "messages": request.messages,
+                    "temperature": request.temperature,
+                    "top_p": request.top_p,
+                    "max_tokens": request.max_tokens,
+                    "stream": True,
+                    "stream_options": {"include_usage": False},
+                }
+                use_completion_api = False
 
             logging.info(f"Starting inference stream for request {request.request_id}")
             logging.debug(
@@ -140,13 +178,19 @@ class InferenceService:
 
             # Choose endpoint using health monitor
             if self.settings.INFERENCE_TRANSPORT == "unix":
-                url = "http://localhost/v1/chat/completions"
+                base_url = "http://localhost"
             else:
                 healthy_endpoint = await self.health_monitor.get_healthy_endpoint()
                 if healthy_endpoint == "unix_socket":
-                    url = "http://localhost/v1/chat/completions"
+                    base_url = "http://localhost"
                 else:
-                    url = f"{healthy_endpoint}/v1/chat/completions"
+                    base_url = healthy_endpoint
+                    
+            # Use appropriate API endpoint based on Harmony usage
+            if use_completion_api:
+                url = f"{base_url}/v1/completions"
+            else:
+                url = f"{base_url}/v1/chat/completions"
 
             async with self.client.stream(
                 "POST",
@@ -183,20 +227,27 @@ class InferenceService:
 
                             if "choices" in chunk_data and chunk_data["choices"]:
                                 choice = chunk_data["choices"][0]
-                                delta = choice.get("delta", {})
+                                
+                                # Handle both completion and chat completion formats
+                                if use_completion_api:
+                                    # Completion API format
+                                    token = choice.get("text", "")
+                                    finish_reason = choice.get("finish_reason")
+                                else:
+                                    # Chat completion API format  
+                                    delta = choice.get("delta", {})
+                                    token = delta.get("content", "")
+                                    finish_reason = choice.get("finish_reason")
 
-                                # Extract token content
-                                if "content" in delta and delta["content"] is not None:
-                                    token = delta["content"]
-                                    if token:  # Only yield non-empty tokens
-                                        token_count += 1
-                                        logging.debug(
-                                            f"Yielding token {token_count}: {repr(token[:50])}"
-                                        )
-                                        yield token
+                                # Extract and yield token content
+                                if token:  # Only yield non-empty tokens
+                                    token_count += 1
+                                    logging.debug(
+                                        f"Yielding token {token_count}: {repr(token[:50])}"
+                                    )
+                                    yield token
 
                                 # Check if this is the final chunk
-                                finish_reason = choice.get("finish_reason")
                                 if finish_reason:
                                     logging.info(
                                         f"Stream finished for request {request.request_id}, reason: {finish_reason}"

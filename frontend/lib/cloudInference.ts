@@ -1,5 +1,6 @@
 import HPKEClient, { HPKEEncryptedMessage } from './hpkeClient';
 import { sha256 } from '@noble/hashes/sha256';
+import { HarmonyResponseDecoder } from './harmonyDecoder';
 
 export interface CloudInferenceConfig {
   routerUrl: string;
@@ -50,10 +51,12 @@ export class CloudInferenceClient {
   private cachedPublicKeys: RouterPublicKeys | null = null;
   private keysCacheExpiry: number = 0;
   private requestFingerprint: string | null = null;
+  private harmonyDecoder: HarmonyResponseDecoder;
 
   constructor(config: CloudInferenceConfig) {
     this.config = config;
     this.hpkeClient = new HPKEClient();
+    this.harmonyDecoder = new HarmonyResponseDecoder();
   }
 
   async initialize(): Promise<void> {
@@ -270,6 +273,9 @@ export class CloudInferenceClient {
     onToken: (token: string) => void,
     abortSignal?: AbortSignal
   ): Promise<void> {
+    // Reset Harmony decoder for new request
+    this.harmonyDecoder.reset();
+    
     try {
       console.log('📡 Starting to read streaming response...');
 
@@ -471,27 +477,21 @@ export class CloudInferenceClient {
             return null;
           }
 
-          // Filter out specific internal formatting tokens
-          const internalTokens = [
-            '<|channel|>',
-            '<|message|>',
-            '<|start|>',
-            '<|end|>',
-            '<|system|>',
-            '<|user|>',
-            '<|assistant|>',
-            'analysis',
-            'final',
-          ];
-
-          const trimmedText = decryptedText.trim();
-          if (internalTokens.includes(trimmedText)) {
-            console.log('⏭️ Skipping internal token:', trimmedText);
+          // Use Harmony decoder to properly parse channels
+          const { shouldInclude, isComplete } = this.harmonyDecoder.processToken(decryptedText);
+          
+          if (isComplete) {
+            console.log('🏁 Harmony response complete');
+            // Could potentially trigger completion callback here if needed
+          }
+          
+          if (shouldInclude) {
+            console.log('✅ Final channel token:', JSON.stringify(decryptedText));
+            return decryptedText;
+          } else {
+            console.log('⏭️ Skipping non-final token:', JSON.stringify(decryptedText));
             return null;
           }
-
-          console.log('✅ Token:', JSON.stringify(decryptedText));
-          return decryptedText;
         } catch (error) {
           console.error('Error decoding ciphertext:', encryptedChunk.ciphertext, 'Error:', error);
           return null;
