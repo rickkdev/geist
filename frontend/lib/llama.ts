@@ -34,6 +34,21 @@ export function getLlamaContext(): LlamaContext | null {
   return llamaContext;
 }
 
+let isInterrupted = false;
+
+export async function interruptGeneration() {
+  // Set flag immediately for fastest response
+  isInterrupted = true;
+  
+  // Call stopCompletion asynchronously without waiting
+  if (llamaContext) {
+    llamaContext.stopCompletion().catch((error) => {
+      // Silently handle errors - the flag is already set
+      console.debug('stopCompletion error (non-critical):', error);
+    });
+  }
+}
+
 export async function generateResponse(
   prompt: string,
   onToken?: (token: string) => void,
@@ -48,6 +63,7 @@ export async function generateResponse(
   let fullResponse = '';
   let tokenCount = 0;
   const startTime = Date.now();
+  isInterrupted = false;
 
   // Enhanced logging function
   const logGeneration = (type: 'START' | 'TOKEN' | 'TIMEOUT' | 'SUCCESS' | 'ERROR', data?: any) => {
@@ -161,27 +177,43 @@ export async function generateResponse(
         stop: ['<|im_end|>', '</s>', '\n\nUser:', '\n\nuser:', '\n\nUSER:', 'User:', '\nUser:'],
       }, (data) => {
         if (data.token) {
+          // Single interruption check - only when actually interrupted
+          if (isInterrupted) {
+            return false; // Stop immediately
+          }
+          
           tokenCount++;
-          logGeneration('TOKEN');
+          
+          // Only log every 10th token to reduce overhead
+          if (tokenCount % 10 === 0) {
+            logGeneration('TOKEN');
+          }
           
           // Token limit guard
           if (tokenCount >= maxTokens) {
             console.log(`⚠️ Token limit reached: ${tokenCount}/${maxTokens}`);
             resolve(fullResponse);
-            return;
+            return false;
           }
           
+          // Direct token processing without checks
           if (onToken) {
             onToken(data.token);
-            fullResponse += data.token;
           }
+          fullResponse += data.token;
         }
       }).then((response) => {
         if (!onToken) {
           fullResponse = response.text || '';
         }
         resolve(fullResponse);
-      }).catch(reject);
+      }).catch((error) => {
+        if (isInterrupted) {
+          resolve(fullResponse); // Return partial response on interruption
+        } else {
+          reject(error);
+        }
+      });
     });
     
     // Race between completion and timeout
@@ -211,6 +243,9 @@ export async function generateResponse(
   } catch (error) {
     logGeneration('ERROR', error);
     throw error;
+  } finally {
+    // Reset the interruption flag
+    isInterrupted = false;
   }
 }
 

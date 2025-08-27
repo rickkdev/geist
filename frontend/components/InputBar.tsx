@@ -5,11 +5,13 @@ interface InputBarProps {
   value: string;
   onChangeText: (text: string) => void;
   onSend: () => void;
+  onInterrupt?: () => void;
   disabled?: boolean;
+  isStreaming?: boolean;
 }
 
-const InputBar: React.FC<InputBarProps> = ({ value, onChangeText, onSend, disabled = false }) => {
-  const isDisabled = disabled || !value.trim();
+const InputBar: React.FC<InputBarProps> = ({ value, onChangeText, onSend, onInterrupt, disabled = false, isStreaming = false }) => {
+  const isDisabled = disabled || (!value.trim() && !isStreaming);
   
   return (
     <View className="flex-row items-end p-2 bg-gray-50">
@@ -22,11 +24,18 @@ const InputBar: React.FC<InputBarProps> = ({ value, onChangeText, onSend, disabl
         editable={!disabled}
       />
       <TouchableOpacity 
-        className={`rounded-2xl px-4 py-2.5 justify-center items-center ${isDisabled ? 'bg-gray-400' : 'bg-blue-600'}`} 
-        onPress={onSend} 
-        disabled={isDisabled}
+        className={`rounded-2xl px-4 py-2.5 justify-center items-center ${isStreaming ? 'bg-transparent' : isDisabled ? 'bg-gray-400' : 'bg-blue-600'}`} 
+        onPress={isStreaming ? onInterrupt : onSend} 
+        disabled={isDisabled && !isStreaming}
       >
-        <Text className="text-white font-bold">Send</Text>
+        {isStreaming ? (
+          // Pause icon - white rectangle on black rounded background
+          <View className="w-6 h-6 rounded-full bg-black items-center justify-center">
+            <View className="w-3 h-3 rounded-sm bg-white" />
+          </View>
+        ) : (
+          <Text className="text-white font-bold">Send</Text>
+        )}
       </TouchableOpacity>
     </View>
   );

@@ -118,15 +118,17 @@ export class CloudInferenceClient {
 
   async sendMessage(
     message: CloudMessage,
-    onToken?: (token: string) => void
+    onToken?: (token: string) => void,
+    abortSignal?: AbortSignal
   ): Promise<CloudInferenceResponse> {
-    return this.sendMessageWithRetry(message, onToken, 0);
+    return this.sendMessageWithRetry(message, onToken, 0, abortSignal);
   }
 
   private async sendMessageWithRetry(
     message: CloudMessage,
     onToken?: (token: string) => void,
-    attempt: number = 0
+    attempt: number = 0,
+    abortSignal?: AbortSignal
   ): Promise<CloudInferenceResponse> {
     try {
       // Ensure HPKE client is initialized
@@ -165,6 +167,7 @@ export class CloudInferenceClient {
           'Cache-Control': 'no-cache',
         },
         body: JSON.stringify(requestPayload),
+        signal: abortSignal,
       });
 
       if (!response.ok) {
@@ -186,7 +189,7 @@ export class CloudInferenceClient {
             `⏳ Rate limited, retrying after ${delay}ms (attempt ${attempt + 1}/${this.config.maxRetries})`
           );
           await this.sleep(delay);
-          return this.sendMessageWithRetry(message, onToken, attempt + 1);
+          return this.sendMessageWithRetry(message, onToken, attempt + 1, abortSignal);
         }
 
         throw error;
@@ -194,14 +197,14 @@ export class CloudInferenceClient {
 
       // Handle streaming response for React Native
       if (onToken) {
-        await this.processStreamingResponse(response, onToken);
+        await this.processStreamingResponse(response, onToken, abortSignal);
         return { success: true };
       } else {
         // Non-streaming mode - collect all tokens
         let fullResponse = '';
         await this.processStreamingResponse(response, (token) => {
           fullResponse += token;
-        });
+        }, abortSignal);
 
         return { success: true };
       }
@@ -214,7 +217,7 @@ export class CloudInferenceClient {
             `🔄 Retrying request after ${delay}ms (attempt ${attempt + 1}/${this.config.maxRetries}): ${error.message}`
           );
           await this.sleep(delay);
-          return this.sendMessageWithRetry(message, onToken, attempt + 1);
+          return this.sendMessageWithRetry(message, onToken, attempt + 1, abortSignal);
         }
         throw error;
       }
@@ -240,7 +243,7 @@ export class CloudInferenceClient {
           `🌐 Network error, retrying after ${delay}ms (attempt ${attempt + 1}/${this.config.maxRetries})`
         );
         await this.sleep(delay);
-        return this.sendMessageWithRetry(message, onToken, attempt + 1);
+        return this.sendMessageWithRetry(message, onToken, attempt + 1, abortSignal);
       }
 
       throw cloudError;
@@ -264,7 +267,8 @@ export class CloudInferenceClient {
 
   private async processStreamingResponse(
     response: Response,
-    onToken: (token: string) => void
+    onToken: (token: string) => void,
+    abortSignal?: AbortSignal
   ): Promise<void> {
     try {
       console.log('📡 Starting to read streaming response...');
@@ -278,6 +282,12 @@ export class CloudInferenceClient {
 
         try {
           while (true) {
+            // Check if aborted
+            if (abortSignal?.aborted) {
+              console.log('📖 Stream reading aborted by user');
+              break;
+            }
+            
             const { done, value } = await reader.read();
 
             if (done) {
@@ -293,12 +303,21 @@ export class CloudInferenceClient {
             buffer = events.remaining;
 
             for (const event of events.events) {
+              // Check if aborted before processing each event
+              if (abortSignal?.aborted) {
+                console.log('📖 Aborting SSE event processing (reader)');
+                throw new Error('Request aborted');
+              }
+              
               try {
                 const decryptedToken = await this.decryptSSEEvent(event);
                 if (decryptedToken) {
                   onToken(decryptedToken);
                 }
               } catch (error) {
+                if (error instanceof Error && error.message === 'Request aborted') {
+                  throw error;
+                }
                 console.error('Error decrypting SSE event:', error);
               }
             }
@@ -324,6 +343,12 @@ export class CloudInferenceClient {
         }
 
         for (const event of events.events) {
+          // Check if aborted before processing each event (fallback mode)
+          if (abortSignal?.aborted) {
+            console.log('📖 Aborting SSE event processing (fallback)');
+            throw new Error('Request aborted');
+          }
+          
           try {
             const decryptedToken = await this.decryptSSEEvent(event);
             if (decryptedToken) {
@@ -332,11 +357,20 @@ export class CloudInferenceClient {
               await new Promise((resolve) => setTimeout(resolve, 20));
             }
           } catch (error) {
+            if (error instanceof Error && error.message === 'Request aborted') {
+              throw error;
+            }
             console.error('Error decrypting SSE event:', error);
           }
         }
       }
     } catch (error) {
+      // Check if this was an abort (interruption) - don't log as error
+      if (error instanceof Error && error.message === 'Request aborted') {
+        console.log('✅ Stream processing aborted by user');
+        throw error; // Re-throw for the hook to handle
+      }
+      
       console.error('Stream processing error:', error);
       throw new CloudInferenceError(
         `Stream processing failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
@@ -558,7 +592,7 @@ export class CloudInferenceClient {
     try {
       const secureOptions = {
         ...options,
-        signal: controller.signal,
+        signal: options.signal || controller.signal, // Use provided signal or fallback to timeout
         headers: {
           ...options.headers,
           'User-Agent': 'GeistApp/1.0',

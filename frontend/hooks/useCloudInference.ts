@@ -25,6 +25,7 @@ export interface CloudInferenceState {
 
 export interface UseCloudInferenceResult extends CloudInferenceState {
   ask: (messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>, onToken?: (token: string) => void) => Promise<void>;
+  interrupt: () => void;
   testConnection: () => Promise<boolean>;
   initialize: () => Promise<void>;
   clearError: () => void;
@@ -51,6 +52,7 @@ export function useCloudInference(options: UseCloudInferenceOptions = {}): UseCl
 
   const clientRef = useRef<CloudInferenceClient | null>(null);
   const currentRequestRef = useRef<string | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // Merge default config with provided config
   const fullConfig: CloudInferenceConfig = {
@@ -142,6 +144,9 @@ export function useCloudInference(options: UseCloudInferenceOptions = {}): UseCl
 
     const requestId = `req-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     currentRequestRef.current = requestId;
+    
+    // Create abort controller for interruption
+    abortControllerRef.current = new AbortController();
 
     updateState({ 
       isGenerating: true, 
@@ -160,7 +165,7 @@ export function useCloudInference(options: UseCloudInferenceOptions = {}): UseCl
         stream: true
       };
 
-      const response = await clientRef.current.sendMessage(cloudMessage, onToken);
+      const response = await clientRef.current.sendMessage(cloudMessage, onToken, abortControllerRef.current?.signal);
       
       if (!response.success) {
         throw new Error(response.error || 'Failed to send message');
@@ -174,7 +179,21 @@ export function useCloudInference(options: UseCloudInferenceOptions = {}): UseCl
         retryAttempt: 0,
         rateLimitedUntil: null
       });
-    } catch (error) {
+    } catch (error: any) {
+      // Check if this was an abort (interruption)
+      if (error?.name === 'AbortError' || 
+          error?.message?.includes('aborted') || 
+          error?.message?.includes('Request aborted')) {
+        console.log('✅ Cloud inference interrupted by user');
+        updateState({ 
+          isGenerating: false,
+          error: null,
+          connectionStatus: 'disconnected'
+        });
+        // Throw a specific interruption error for the ChatScreen to handle
+        throw new Error('Generation interrupted');
+      }
+      
       console.error('Cloud inference error:', error);
       
       let errorMessage = 'Unknown error occurred';
@@ -215,8 +234,22 @@ export function useCloudInference(options: UseCloudInferenceOptions = {}): UseCl
       throw error;
     } finally {
       currentRequestRef.current = null;
+      abortControllerRef.current = null;
     }
   }, [state.isGenerating, updateState]);
+
+  const interrupt = useCallback(() => {
+    console.log('🛑 Interrupting cloud inference');
+    if (abortControllerRef.current) {
+      console.log('🛑 Aborting controller');
+      abortControllerRef.current.abort();
+    }
+    // Immediately update state
+    updateState({ 
+      isGenerating: false,
+      error: null // Don't set error for interruption
+    });
+  }, [updateState]);
 
   const clearError = useCallback(() => {
     updateState({ error: null });
@@ -257,6 +290,7 @@ export function useCloudInference(options: UseCloudInferenceOptions = {}): UseCl
   return {
     ...state,
     ask,
+    interrupt,
     testConnection,
     initialize,
     clearError,

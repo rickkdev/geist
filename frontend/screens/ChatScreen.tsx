@@ -39,7 +39,7 @@ const ChatScreen: React.FC = () => {
     error: chatError,
     currentChat,
   } = useChatStorage(currentChatId);
-  const { isReady, loading, error, downloadProgress, ask } = useLlama();
+  const { isReady, loading, error, downloadProgress, ask, interrupt: interruptLocal } = useLlama();
   const {
     isInitialized: cloudInitialized,
     isLoading: cloudLoading,
@@ -50,6 +50,7 @@ const ChatScreen: React.FC = () => {
     retryAttempt,
     rateLimitedUntil,
     ask: askCloud,
+    interrupt: interruptCloud,
     clearError: clearCloudError,
     initialize: initializeCloud,
   } = useCloudInference({ autoInitialize: false });
@@ -288,13 +289,16 @@ const ChatScreen: React.FC = () => {
         });
       }
 
-      const assistantMessage: LegacyMessage = {
-        id: assistantId,
-        text: replyText || fullResponse,
-        role: 'assistant',
-        timestamp: Date.now(),
-      };
-      await addMessage(assistantMessage);
+      // Only save message if we have content
+      if (replyText || fullResponse) {
+        const assistantMessage: LegacyMessage = {
+          id: assistantId,
+          text: replyText || fullResponse,
+          role: 'assistant',
+          timestamp: Date.now(),
+        };
+        await addMessage(assistantMessage);
+      }
       setStreamingMessage('');
 
       console.log('✅ CHAT HANDLER: Successfully added assistant message');
@@ -306,7 +310,28 @@ const ChatScreen: React.FC = () => {
 
       // Log the entire chat history after each message exchange
       logChatHistoryForLLM();
-    } catch (err) {
+    } catch (err: any) {
+      // Check if this was an interruption first (not an error)
+      const wasInterrupted = err?.message?.toLowerCase().includes('interrupted');
+      
+      if (wasInterrupted) {
+        console.log('✅ Generation was interrupted by user');
+        // Save any partial response we have
+        if (streamingMessage && streamingMessage.trim()) {
+          const assistantMessage: LegacyMessage = {
+            id: (Date.now() + 1).toString(),
+            text: streamingMessage.trim() + '\n\n[Response interrupted]',
+            role: 'assistant',
+            timestamp: Date.now(),
+          };
+          await addMessage(assistantMessage);
+        }
+        setStreamingMessage('');
+        setIsTyping(false);
+        return;
+      }
+
+      // Only log as error if it wasn't an interruption
       console.error('💥 CHAT HANDLER:', inferenceMode, 'LLM request failed:', err);
 
       let errorText = `Sorry, I encountered an error processing your message${inferenceMode === 'cloud' ? ' (cloud inference)' : ' (local inference)'}.`;
@@ -457,9 +482,29 @@ const ChatScreen: React.FC = () => {
     // Drawer closing is now handled by ChatDrawer component
   };
 
+  const handleInterrupt = () => {
+    // Immediate UI feedback
+    setIsTyping(false);
+    setStreamingMessage('');
+    
+    // Trigger interruption without waiting
+    if (inferenceMode === 'local') {
+      interruptLocal();
+    } else {
+      interruptCloud();
+    }
+  };
+
   const handleNewChat = async () => {
     try {
       console.log('🆕 Creating new chat...');
+      
+      // Auto-interrupt any ongoing inference
+      const isCurrentlyGenerating = inferenceMode === 'local' ? isTyping : cloudGenerating;
+      if (isCurrentlyGenerating) {
+        console.log('🛑 Auto-interrupting ongoing inference for new chat');
+        handleInterrupt();
+      }
 
       // Create a new chat
       const newChatId = await createNewChat();
@@ -738,7 +783,9 @@ const ChatScreen: React.FC = () => {
             value={input}
             onChangeText={setInput}
             onSend={handleSend}
+            onInterrupt={handleInterrupt}
             disabled={(inferenceMode === 'local' ? !isReady : false) || isTyping || cloudGenerating}
+            isStreaming={isTyping || cloudGenerating}
           />
         </SafeAreaView>
 

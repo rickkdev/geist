@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
-import { initializeLlama, generateResponse, releaseLlama, getLlamaContext } from '../lib/llama';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { initializeLlama, generateResponse, releaseLlama, getLlamaContext, interruptGeneration } from '../lib/llama';
 import { downloadModel, getModelPath } from '../lib/modelDownloader';
 import { Message } from '../lib/chatStorage';
 import { formatPrompt, formatSinglePrompt, formatPromptSimple } from '../lib/promptFormatter';
@@ -14,6 +14,7 @@ export interface UseLlamaReturn {
     onToken?: (token: string) => void,
     oneShot?: boolean
   ) => Promise<string>;
+  interrupt: () => void;
   reinitialize: () => Promise<void>;
   debugMode: boolean;
   setDebugMode: (enabled: boolean) => void;
@@ -25,6 +26,8 @@ export function useLlama(): UseLlamaReturn {
   const [error, setError] = useState<string | null>(null);
   const [downloadProgress, setDownloadProgress] = useState(0);
   const [debugMode, setDebugMode] = useState(false);
+  
+  const currentRequestRef = useRef<{ interrupt: () => void } | null>(null);
 
   const initialize = useCallback(async () => {
     try {
@@ -71,6 +74,14 @@ export function useLlama(): UseLlamaReturn {
         throw new Error('Llama is not ready. Please wait for initialization to complete.');
       }
 
+      let interrupted = false;
+      currentRequestRef.current = {
+        interrupt: () => {
+          interrupted = true;
+          console.log('🛑 Local inference interrupted by user');
+        }
+      };
+
       try {
         let formattedPrompt: string;
 
@@ -83,16 +94,43 @@ export function useLlama(): UseLlamaReturn {
           console.log('Using simple prompt format for better model compatibility');
         }
 
-        const response = await generateResponse(formattedPrompt, onToken, 256, 120000);
+        // Wrap onToken to check for interruption
+        const wrappedOnToken = onToken ? (token: string) => {
+          if (!interrupted) {
+            onToken(token);
+          }
+        } : undefined;
+
+        const response = await generateResponse(formattedPrompt, wrappedOnToken, 256, 120000);
+        
+        if (interrupted) {
+          throw new Error('Generation interrupted by user');
+        }
+        
         return response;
       } catch (err) {
+        if (interrupted) {
+          console.log('✅ Local inference interruption confirmed');
+          // Don't set error state for interruptions
+          throw new Error('Generation interrupted');
+        }
         const errorMessage = err instanceof Error ? err.message : 'Failed to generate response';
         setError(errorMessage);
         throw err;
+      } finally {
+        currentRequestRef.current = null;
       }
     },
     [isReady]
   );
+
+  const interrupt = useCallback(() => {
+    if (currentRequestRef.current) {
+      currentRequestRef.current.interrupt();
+    }
+    // Call interruption without awaiting for speed
+    interruptGeneration();
+  }, []);
 
   const reinitialize = useCallback(async () => {
     if (isReady && getLlamaContext()) {
@@ -118,6 +156,7 @@ export function useLlama(): UseLlamaReturn {
     error,
     downloadProgress,
     ask,
+    interrupt,
     reinitialize,
     debugMode,
     setDebugMode,
