@@ -671,34 +671,6 @@ const ChatScreen: React.FC = () => {
                     {inferenceMode === 'local' ? 'Local' : 'Cloud'}
                   </Text>
 
-                  {/* Connection Status Indicator */}
-                  {inferenceMode === 'cloud' && (
-                    <View className="flex-row items-center">
-                      {connectionStatus === 'connected' && (
-                        <View className="h-2 w-2 rounded-full bg-green-500" />
-                      )}
-                      {connectionStatus === 'connecting' && (
-                        <View className="h-2 w-2 animate-pulse rounded-full bg-yellow-500" />
-                      )}
-                      {connectionStatus === 'error' && (
-                        <View className="h-2 w-2 rounded-full bg-red-500" />
-                      )}
-                      {connectionStatus === 'rate_limited' && (
-                        <View className="h-2 w-2 rounded-full bg-orange-500" />
-                      )}
-                      {connectionStatus === 'disconnected' && (
-                        <View className="h-2 w-2 rounded-full bg-gray-400" />
-                      )}
-                      {isRetrying && (
-                        <Text className="ml-1 text-xs text-gray-500">({retryAttempt}/3)</Text>
-                      )}
-                      {rateLimitedUntil && rateLimitedUntil > Date.now() && (
-                        <Text className="ml-1 text-xs text-orange-600">
-                          {Math.ceil((rateLimitedUntil - Date.now()) / 1000)}s
-                        </Text>
-                      )}
-                    </View>
-                  )}
                 </View>
 
                 {/* Dropdown Arrow - Right arrow "›" that rotates down when dropdown opens */}
