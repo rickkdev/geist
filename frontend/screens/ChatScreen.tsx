@@ -28,6 +28,41 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const DRAWER_WIDTH = Math.min(288, SCREEN_WIDTH * 0.85);
 
 const ChatScreen: React.FC = () => {
+  // Filter assistant responses to remove reasoning before saving to history
+  const filterReasoningFromResponse = (response: string): string => {
+    // Look for various delimiter patterns we've observed
+    const delimiters = ['assistant**', 'assistant'];
+    
+    for (const delimiter of delimiters) {
+      const delimiterIndex = response.indexOf(delimiter);
+      
+      if (delimiterIndex !== -1) {
+        // Find the end of the delimiter and return content after it
+        const afterDelimiter = response.substring(delimiterIndex + delimiter.length);
+        const nextLineIndex = afterDelimiter.indexOf('\n');
+        
+        if (nextLineIndex !== -1) {
+          return afterDelimiter.substring(nextLineIndex + 1).trim();
+        }
+        
+        return afterDelimiter.trim();
+      }
+    }
+    
+    // Also try to remove any garbage characters at the beginning
+    // Look for patterns like multiple dots/ellipses followed by actual content
+    const garbagePattern = /^[.\s…]+/;
+    const cleanedResponse = response.replace(garbagePattern, '').trim();
+    
+    // If we cleaned up garbage, return that
+    if (cleanedResponse !== response.trim()) {
+      return cleanedResponse;
+    }
+    
+    // If no delimiter found, return original response
+    return response;
+  };
+
   const [currentChatId, setCurrentChatId] = useState<number | undefined>();
   const {
     messages,
@@ -181,6 +216,13 @@ const ChatScreen: React.FC = () => {
         content: msg.text,
       }));
 
+      // Debug: Log what we're sending to the model
+      console.log('🚀 SENDING TO INFERENCE SERVER:');
+      cloudMessages.forEach((msg, index) => {
+        console.log(`${index + 1}. [${msg.role}]: ${msg.content.substring(0, 200)}${msg.content.length > 200 ? '...' : ''}`);
+      });
+      console.log('─'.repeat(50));
+
       await askCloud(cloudMessages, (token: string) => {
         fullResponse += token;
         setStreamingMessage(prev => prev + token);
@@ -190,16 +232,19 @@ const ChatScreen: React.FC = () => {
 
       // Only save message if we have content
       if (replyText || fullResponse) {
+        const responseText = replyText || fullResponse;
+        const filteredResponse = filterReasoningFromResponse(responseText);
+        
         const assistantMessage: LegacyMessage = {
           id: assistantId,
-          text: replyText || fullResponse,
+          text: filteredResponse,
           role: 'assistant',
           timestamp: Date.now(),
         };
         await addMessage(assistantMessage);
         
         // Log the completed conversation
-        MinimalLogger.logChatSession(userMessage.text, replyText || fullResponse, 'cloud');
+        MinimalLogger.logChatSession(userMessage.text, filteredResponse, 'cloud');
       }
       setStreamingMessage('');
 
@@ -217,16 +262,19 @@ const ChatScreen: React.FC = () => {
       if (wasInterrupted) {
         // Save any partial response we have
         if (streamingMessage && streamingMessage.trim()) {
+          const interruptedText = streamingMessage.trim() + '\n\n[Response interrupted]';
+          const filteredResponse = filterReasoningFromResponse(interruptedText);
+          
           const assistantMessage: LegacyMessage = {
             id: (Date.now() + 1).toString(),
-            text: streamingMessage.trim() + '\n\n[Response interrupted]',
+            text: filteredResponse,
             role: 'assistant',
             timestamp: Date.now(),
           };
           await addMessage(assistantMessage);
           
           // Log the interrupted conversation
-          MinimalLogger.logChatSession(userMessage.text, streamingMessage.trim() + '\n\n[Response interrupted]', 'cloud');
+          MinimalLogger.logChatSession(userMessage.text, filteredResponse, 'cloud');
         }
         setStreamingMessage('');
         setIsTyping(false);
@@ -271,11 +319,11 @@ const ChatScreen: React.FC = () => {
 
       // If we have streaming message, preserve it with context
       if (streamingMessage && streamingMessage.trim()) {
-        errorText =
-          streamingMessage.trim() +
+        const partialResponse = streamingMessage.trim() +
           '\n\n[⚠️ Response interrupted - ' +
           (fallbackMessage || 'Cloud connection lost') +
           ']';
+        errorText = filterReasoningFromResponse(partialResponse);
       }
 
       const errorMessage: LegacyMessage = {
