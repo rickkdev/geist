@@ -1,6 +1,5 @@
 import React from 'react';
 import { View, Text, ScrollView } from 'react-native';
-import Markdown from 'react-native-markdown-display';
 
 // Legacy Message type for compatibility
 interface LegacyMessage {
@@ -14,14 +13,71 @@ interface MessageBubbleProps {
   message: LegacyMessage;
 }
 
+// Simple markdown text component that handles basic formatting without spacing issues
+const SimpleMarkdownText: React.FC<{ text: string; isUser: boolean }> = ({ text, isUser }) => {
+  const baseStyle = {
+    color: isUser ? '#ffffff' : '#111827',
+    fontSize: 15,
+    lineHeight: 24,
+  };
+
+  // Split text into parts and format basic markdown
+  const renderText = (text: string) => {
+    const parts = text.split(/(\*\*.*?\*\*|\*.*?\*|`.*?`)/g);
+    
+    return parts.map((part, index) => {
+      // Bold text **text**
+      if (part.startsWith('**') && part.endsWith('**')) {
+        return (
+          <Text key={index} style={[baseStyle, { fontWeight: '700' }]}>
+            {part.slice(2, -2)}
+          </Text>
+        );
+      }
+      // Italic text *text*
+      if (part.startsWith('*') && part.endsWith('*') && !part.startsWith('**')) {
+        return (
+          <Text key={index} style={[baseStyle, { fontStyle: 'italic' }]}>
+            {part.slice(1, -1)}
+          </Text>
+        );
+      }
+      // Inline code `code`
+      if (part.startsWith('`') && part.endsWith('`')) {
+        return (
+          <Text key={index} style={[baseStyle, { 
+            backgroundColor: isUser ? 'rgba(255,255,255,0.2)' : '#f3f4f6',
+            paddingHorizontal: 4,
+            paddingVertical: 2,
+            borderRadius: 4,
+            fontFamily: 'monospace',
+            fontSize: 14,
+          }]}>
+            {part.slice(1, -1)}
+          </Text>
+        );
+      }
+      // Regular text
+      return (
+        <Text key={index} style={baseStyle}>
+          {part}
+        </Text>
+      );
+    });
+  };
+
+  return <Text style={baseStyle}>{renderText(text)}</Text>;
+};
+
 const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
   const isUser = message.role === 'user';
   
   // Process text to ensure proper line breaks for markdown
   const processMessageText = (text: string): string => {
-    if (!text || typeof text !== 'string') return text;
+    if (!text || typeof text !== 'string') return '';
     
-    let processed = text;
+    // First, trim all whitespace and normalize line endings
+    let processed = text.trim().replace(/\r\n/g, '\n').replace(/\r/g, '\n');
     
     // Only add line breaks in very safe, specific cases:
     
@@ -67,10 +123,12 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
       color: isUser ? '#ffffff' : '#111827',
       fontSize: 15,
       lineHeight: 24,
+      margin: 0,
+      padding: 0,
     },
     paragraph: {
       marginTop: 0,
-      marginBottom: 10,
+      marginBottom: 0,
     },
     strong: {
       fontWeight: '700',
@@ -82,27 +140,28 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
     heading1: {
       fontSize: 22,
       fontWeight: '700',
-      marginBottom: 8,
-      marginTop: 12,
+      marginBottom: 0,
+      marginTop: 0,
       color: isUser ? '#ffffff' : '#111827',
     },
     heading2: {
       fontSize: 20,
       fontWeight: '700',
-      marginBottom: 6,
-      marginTop: 10,
+      marginBottom: 0,
+      marginTop: 0,
       color: isUser ? '#ffffff' : '#111827',
     },
     heading3: {
       fontSize: 18,
       fontWeight: '600',
-      marginBottom: 4,
-      marginTop: 8,
+      marginBottom: 0,
+      marginTop: 0,
       color: isUser ? '#ffffff' : '#111827',
     },
     list_item: {
       flexDirection: 'row',
-      marginBottom: 8,
+      marginBottom: 0,
+      marginTop: 0,
     },
     ordered_list_icon: {
       color: isUser ? '#ffffff' : '#374151',
@@ -129,7 +188,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
       backgroundColor: isUser ? 'rgba(255,255,255,0.1)' : '#f3f4f6',
       padding: 12,
       borderRadius: 8,
-      marginVertical: 8,
+      marginVertical: 0,
       fontFamily: 'monospace',
       fontSize: 13,
     },
@@ -137,18 +196,18 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
       backgroundColor: isUser ? 'rgba(255,255,255,0.1)' : '#f3f4f6',
       padding: 12,
       borderRadius: 8,
-      marginVertical: 8,
+      marginVertical: 0,
     },
     blockquote: {
       borderLeftWidth: 3,
       borderLeftColor: isUser ? 'rgba(255,255,255,0.5)' : '#d1d5db',
       paddingLeft: 12,
-      marginVertical: 8,
+      marginVertical: 0,
     },
     hr: {
       backgroundColor: isUser ? 'rgba(255,255,255,0.3)' : '#d1d5db',
       height: 1,
-      marginVertical: 16,
+      marginVertical: 0,
     },
     link: {
       color: isUser ? '#93c5fd' : '#2563eb',
@@ -159,30 +218,25 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
   return (
     <View
       style={{
-        marginBottom: 35,
-        marginTop: 15,
-        paddingBottom: 25,
+        marginBottom: 16,
+        marginTop: 8,
       }}
-      className={`max-w-[80%] p-3 rounded-2xl ${
+      className={`max-w-[80%] rounded-2xl ${
         isUser 
           ? 'bg-blue-600 self-end' 
           : 'bg-gray-200 self-start'
       }`}>
-      {isUser ? (
-        <Text className="text-white">{message.text}</Text>
-      ) : (
-        <Markdown 
-          style={markdownStyles}
-          rules={{
-            // Custom rule to handle soft breaks better
-            softbreak: (node, children, parent, styles) => (
-              <Text key={node.key}>{'\n'}</Text>
-            ),
-          }}
-        >
-          {processMessageText(message.text)}
-        </Markdown>
-      )}
+      <View style={{ 
+        paddingTop: 12, 
+        paddingLeft: 12, 
+        paddingRight: 12, 
+        paddingBottom: 12,
+      }}>
+        <SimpleMarkdownText 
+          text={processMessageText(message.text)}
+          isUser={isUser}
+        />
+      </View>
     </View>
   );
 };
