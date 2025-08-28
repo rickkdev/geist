@@ -467,7 +467,7 @@ const ChatScreen: React.FC = () => {
 
               {/* Center - Title */}
               <View className="flex-row items-center">
-                <Text className="text-lg font-semibold text-black">Geist Cloud</Text>
+                <Text className="text-lg font-medium text-black">Geist</Text>
               </View>
 
               {/* Right side - New Chat Button */}
