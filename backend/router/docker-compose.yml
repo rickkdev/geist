@@ -1,0 +1,46 @@
+version: "3.8"
+
+services:
+  router:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - ENVIRONMENT=development
+      - LOG_LEVEL=DEBUG
+      - INFERENCE_ENDPOINTS=["http://inference:8001"]
+      - INFERENCE_TRANSPORT=http
+    depends_on:
+      - inference
+    volumes:
+      - ./dev-keys:/app/dev-keys:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  inference:
+    build: ../inference
+    ports:
+      - "8001:8001"
+    environment:
+      - MODEL_PATH=/app/models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf
+      - HOST=0.0.0.0
+      - PORT=8001
+    volumes:
+      - inference_models:/app/models
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+volumes:
+  inference_models:
+
+networks:
+  default:
+    name: llm-network
