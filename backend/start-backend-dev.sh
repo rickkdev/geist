@@ -67,7 +67,7 @@ echo "1️⃣ Starting inference server..."
 echo "   Model: $MODEL_PATH"
 echo "   Binding to: localhost:8001"
 
-# Start inference server in background
+# Start inference server in background with gpt-oss optimized settings (no jinja due to template bugs)
 cd inference
 llama.cpp/build/bin/llama-server \
     -m "llama.cpp/models/gpt-oss-20b-Q4_K_S.gguf" \
@@ -75,7 +75,12 @@ llama.cpp/build/bin/llama-server \
     -ngl 0 \
     --port 8001 \
     --host 127.0.0.1 \
-    --log-disable &
+    --log-disable \
+    --temp 1.0 \
+    --top-p 1.0 \
+    --sampling-seq tp \
+    --min-p 0.0 \
+    --top-k 0 &
 
 LLAMA_PID=$!
 cd ../../

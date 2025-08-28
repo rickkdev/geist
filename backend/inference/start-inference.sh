@@ -40,13 +40,18 @@ cleanup() {
 
 trap cleanup SIGINT SIGTERM
 
-# Start llama.cpp server
+# Start llama.cpp server with gpt-oss optimized settings (no jinja due to template bugs)
 llama.cpp/build/bin/llama-server \
     -m "$MODEL_PATH" \
     -c 4096 \
     -ngl 0 \
     --port 8001 \
     --host 127.0.0.1 \
-    --log-disable
+    --log-disable \
+    --temp 1.0 \
+    --top-p 1.0 \
+    --sampling-seq tp \
+    --min-p 0.0 \
+    --top-k 0
 
 echo "✅ Inference server stopped"

@@ -25,7 +25,15 @@ export class HarmonyResponseDecoder {
    * Process a decrypted token and determine if it should be included in the final response
    */
   processToken(token: string): { shouldInclude: boolean; isComplete: boolean } {
-    // Handle Harmony control tokens
+    // TEMPORARY FIX: For gpt-oss models without proper Harmony formatting,
+    // include all content that isn't control tokens
+    
+    // Skip only truly empty tokens, but preserve space-only tokens
+    if (!token || token === '') {
+      return { shouldInclude: false, isComplete: false };
+    }
+    
+    // Handle Harmony control tokens (filter these out)
     if (token === '<|channel|>') {
       this.awaitingChannelName = true;
       return { shouldInclude: false, isComplete: false };
@@ -44,17 +52,17 @@ export class HarmonyResponseDecoder {
       return { shouldInclude: false, isComplete: false };
     }
     
-    // Handle other control tokens
-    if (['<|start|>', '<|end|>', '<|return|>', '<|system|>', '<|user|>', '<|assistant|>'].includes(token)) {
-      return { shouldInclude: false, isComplete: false };
-    }
-    
-    // Check for completion markers
-    if (token === '<|end|>' || token === '') {
+    // Check for completion markers first
+    if (token === '<|end|>') {
       return { shouldInclude: false, isComplete: true };
     }
     
-    // Process content based on current channel
+    // Handle other control tokens (filter these out)
+    if (['<|start|>', '<|return|>', '<|system|>', '<|user|>', '<|assistant|>'].includes(token)) {
+      return { shouldInclude: false, isComplete: false };
+    }
+    
+    // Process content based on current channel (proper Harmony format)
     if (this.currentChannel && this.awaitingMessage) {
       this.channels[this.currentChannel].push(token);
       
@@ -63,8 +71,8 @@ export class HarmonyResponseDecoder {
       return { shouldInclude, isComplete: false };
     }
     
-    // Default: don't include unknown content
-    return { shouldInclude: false, isComplete: false };
+    // TEMPORARY: For gpt-oss without proper Harmony, include all non-control content
+    return { shouldInclude: true, isComplete: false };
   }
   
   /**

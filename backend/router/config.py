@@ -87,7 +87,7 @@ class Settings(BaseSettings):
     DEV_DEBUG: bool = False
 
     # Harmony settings
-    HARMONY_ENABLED: bool = True  # Enable OpenAI Harmony response format
+    HARMONY_ENABLED: bool = False  # Enable OpenAI Harmony response format (DISABLED for gpt-oss tokenization fix)
     HARMONY_REASONING_EFFORT: str = "low"  # "low", "medium", "high" - using "low" for mobile chat
     HARMONY_INCLUDE_ANALYSIS: bool = True  # Include analysis/reasoning channels
 
