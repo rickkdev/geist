@@ -421,8 +421,8 @@ export class CloudInferenceClient {
           }
           const decryptedText = new TextDecoder().decode(utf8Bytes);
 
-          // Skip empty chunks
-          if (!decryptedText || decryptedText.trim() === '') {
+          // Skip only truly empty chunks, but preserve space-only tokens
+          if (!decryptedText || decryptedText === '') {
             return null;
           }
 
