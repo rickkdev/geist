@@ -158,7 +158,12 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
 
   return (
     <View
-      className={`max-w-[80%] p-3 rounded-2xl my-1 ${
+      style={{
+        marginBottom: 35,
+        marginTop: 15,
+        paddingBottom: 25,
+      }}
+      className={`max-w-[80%] p-3 rounded-2xl ${
         isUser 
           ? 'bg-blue-600 self-end' 
           : 'bg-gray-200 self-start'
