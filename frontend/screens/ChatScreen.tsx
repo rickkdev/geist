@@ -183,7 +183,7 @@ const ChatScreen: React.FC = () => {
 
       await askCloud(cloudMessages, (token: string) => {
         fullResponse += token;
-        setStreamingMessage(fullResponse);
+        setStreamingMessage(prev => prev + token);
       });
 
       const replyText = fullResponse;
